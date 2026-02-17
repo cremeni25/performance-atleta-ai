@@ -6,7 +6,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from supabase_client import supabase
+from app.supabase_client import supabase
 
 
 # =========================================================
