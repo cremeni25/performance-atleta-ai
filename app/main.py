@@ -278,3 +278,30 @@ def avaliar_intervencao_endpoint(atleta_id: str):
         "risco": risco,
         "intervencao_executada": True
     }
+
+# =====================================================
+# IA INSTITUCIONAL — ANÁLISE DO CLUBE
+# =====================================================
+
+from app.agp_institutional_ai import buscar_scores_clube, calcular_indicadores, gerar_diagnostico_institucional
+
+
+@app.get("/analise-institucional/{clube_id}")
+def analise_institucional(clube_id: str):
+
+    scores = buscar_scores_clube(clube_id)
+
+    if not scores:
+        return {"mensagem": "Sem dados suficientes"}
+
+    indicadores = calcular_indicadores(scores)
+
+    diagnostico = gerar_diagnostico_institucional(indicadores["media_clube"])
+
+    ranking = sorted(scores, key=lambda x: x["score_global"], reverse=True)[:10]
+
+    return {
+        "indicadores": indicadores,
+        "diagnostico": diagnostico,
+        "ranking_top_10": ranking
+    }
