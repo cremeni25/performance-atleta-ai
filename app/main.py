@@ -305,3 +305,21 @@ def analise_institucional(clube_id: str):
         "diagnostico": diagnostico,
         "ranking_top_10": ranking
     }
+
+# =====================================================
+# IA GLOBAL — BENCHMARK ENTRE CLUBES
+# =====================================================
+
+from app.agp_global_ai import gerar_ranking_global, calcular_indicadores_globais
+
+
+@app.get("/benchmark-global")
+def benchmark_global():
+
+    ranking = gerar_ranking_global()
+    indicadores = calcular_indicadores_globais()
+
+    return {
+        "ranking_global_clubes": ranking,
+        "indicadores_globais": indicadores
+    }
