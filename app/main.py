@@ -39,3 +39,52 @@ def criar_atleta(perfil: PerfilAtletaCreate):
         "status": "atleta_criado",
         "dados": resultado
     }
+
+# =====================================================
+# INTEGRAÇÃO AGP CORE ENGINE — ANÁLISE DE PERFORMANCE
+# =====================================================
+
+from app.agp_core_engine import Athlete, GlobalPerformanceEngine
+
+class DadosAnalise(BaseModel):
+    idade: int
+    nivel: str
+
+    # Dados simulados das dimensões (0–100)
+    fisiologica: list[float]
+    tecnica: list[float]
+    recuperacao: list[float]
+    psicologica: list[float]
+    fisica: list[float]
+    contextual: list[float]
+
+@app.post("/analisar-atleta")
+def analisar_atleta(dados: DadosAnalise):
+
+    # Perfil do atleta
+    profile = {
+        "idade": dados.idade,
+        "nivel": dados.nivel
+    }
+
+    # Dados estruturados para o motor
+    normalized_data = {
+        "fisiologica": dados.fisiologica,
+        "tecnica": dados.tecnica,
+        "recuperacao": dados.recuperacao,
+        "psicologica": dados.psicologica,
+        "fisica": dados.fisica,
+        "contextual": dados.contextual
+    }
+
+    atleta = Athlete(profile=profile, data={}, history=[])
+    atleta.normalized_data = normalized_data
+
+    engine = GlobalPerformanceEngine()
+    resultado = engine.run(atleta)
+
+    return {
+        "score_cientifico": resultado.scientific_score,
+        "score_adaptativo": resultado.adaptive_score,
+        "score_final": resultado.final_score
+    }
