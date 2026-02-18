@@ -116,3 +116,51 @@ def analisar_atleta_v2(dados: DadosAnalise):
     resultado = engine.run(atleta)
 
     return resultado
+
+# =====================================================
+# AGP CORE ENGINE V2 — ANÁLISE + PERSISTÊNCIA
+# =====================================================
+
+from app.score_atleta_repository import salvar_score_atleta
+
+
+@app.post("/analisar-e-salvar-atleta")
+def analisar_e_salvar_atleta(dados: DadosAnalise):
+
+    profile = {
+        "idade": dados.idade,
+        "nivel": dados.nivel
+    }
+
+    normalized_data = {
+        "fisiologico": dados.fisiologica,
+        "tecnico": dados.tecnica,
+        "recuperacao": dados.recuperacao,
+        "mental": dados.psicologica,
+        "fisico": dados.fisica,
+        "contextual": dados.contextual
+    }
+
+    atleta = Athlete(profile=profile, normalized_data=normalized_data)
+
+    engine = GlobalPerformanceEngine()
+    resultado = engine.run(atleta)
+
+    dados_para_salvar = {
+        "score_fisico": resultado["score_fisico"],
+        "score_fisiologico": resultado["score_fisiologico"],
+        "score_tecnico": resultado["score_tecnico"],
+        "score_mental": resultado["score_mental"],
+        "score_recuperacao": resultado["score_recuperacao"],
+        "score_global": resultado["score_global"],
+        "nivel_classificacao": resultado["nivel_classificacao"],
+        "diagnostico": resultado["diagnostico"],
+        "data_calculo": resultado["data_calculo"]
+    }
+
+    salvar_score_atleta(dados_para_salvar)
+
+    return {
+        "status": "salvo_com_sucesso",
+        "resultado": resultado
+    }
