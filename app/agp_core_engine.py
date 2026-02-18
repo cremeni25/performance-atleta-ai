@@ -1,90 +1,65 @@
-# ==========================================
-# MOTOR GLOBAL DE PERFORMANCE DO ATLETA v1
-# Núcleo Científico + Adaptativo
-# ==========================================
+# ==========================================================
+# AGP CORE ENGINE v2
+# Algoritmo Global de Performance do Atleta
+# Versão Científica Multidimensional Profissional
+# ==========================================================
 
 import numpy as np
+from datetime import date
 
-# ==========================================
-# CLASSE DO ATLETA
-# ==========================================
 
 class Athlete:
 
-    def __init__(self, profile, data, history=None):
+    def __init__(self, profile, normalized_data, history=None):
         self.profile = profile
-        self.data = data
+        self.normalized_data = normalized_data
         self.history = history if history else []
 
-        self.normalized_data = {}
-        self.subdimensions = {}
-        self.dimensions = {}
-        self.scientific_score = 0
-        self.adaptive_score = 0
-        self.final_score = 0
+        self.dimension_scores = {}
+        self.score_global = 0
+        self.classificacao = ""
+        self.diagnostico = ""
 
 
-# ==========================================
-# NORMALIZAÇÃO
-# ==========================================
+# ==========================================================
+# ENGINE CIENTÍFICO
+# ==========================================================
 
-class Normalizer:
-
-    @staticmethod
-    def normalize(value, min_val, max_val, inverse=False):
-        score = ((value - min_val) / (max_val - min_val)) * 100
-        return 100 - score if inverse else score
-
-
-# ==========================================
-# MOTOR CIENTÍFICO
-# ==========================================
-
-class ScientificEngine:
+class GlobalPerformanceEngine:
 
     BASE_WEIGHTS = {
-        "fisiologica": 0.25,
-        "tecnica": 0.20,
+        "fisiologico": 0.25,
+        "tecnico": 0.20,
         "recuperacao": 0.20,
-        "psicologica": 0.15,
-        "fisica": 0.10,
+        "mental": 0.15,
+        "fisico": 0.10,
         "contextual": 0.10
     }
 
-    def calculate_subdimensions(self, athlete):
-        athlete.subdimensions = athlete.normalized_data
+    # ------------------------------------------------------
 
-    def calculate_dimensions(self, athlete):
-        for dim, values in athlete.subdimensions.items():
-            athlete.dimensions[dim] = np.mean(values)
+    def calcular_dimensoes(self, athlete):
 
-    def calculate_scientific_score(self, athlete):
-        total = 0
-        for dim, score in athlete.dimensions.items():
-            weight = self.BASE_WEIGHTS.get(dim, 0)
-            total += score * weight
+        for dim, valores in athlete.normalized_data.items():
+            athlete.dimension_scores[dim] = float(np.mean(valores))
 
-        athlete.scientific_score = total
+    # ------------------------------------------------------
 
+    def aplicar_pesos_adaptativos(self, athlete):
 
-# ==========================================
-# MOTOR ADAPTATIVO
-# ==========================================
+        weights = self.BASE_WEIGHTS.copy()
 
-class AdaptiveEngine:
+        idade = athlete.profile.get("idade", 18)
+        nivel = athlete.profile.get("nivel", "base")
 
-    def adjust_weights(self, athlete):
-        profile = athlete.profile
-        weights = ScientificEngine.BASE_WEIGHTS.copy()
+        # Ajustes por idade
+        if idade < 18:
+            weights["fisiologico"] *= 1.1
+            weights["mental"] *= 0.9
 
-        # Ajuste por idade
-        if profile["idade"] < 18:
-            weights["fisiologica"] *= 1.1
-            weights["psicologica"] *= 0.9
-
-        # Ajuste por nível
-        if profile["nivel"] == "elite":
-            weights["tecnica"] *= 1.2
+        # Ajustes por nível competitivo
+        if nivel.lower() == "elite":
+            weights["tecnico"] *= 1.2
             weights["recuperacao"] *= 1.2
 
         # Normalizar pesos
@@ -94,78 +69,83 @@ class AdaptiveEngine:
 
         return weights
 
-    def calculate_adaptive_score(self, athlete, weights):
-        total = 0
-        for dim, score in athlete.dimensions.items():
-            total += score * weights.get(dim, 0)
+    # ------------------------------------------------------
 
-        athlete.adaptive_score = total
+    def calcular_score_global(self, athlete, weights):
 
+        score = 0
 
-# ==========================================
-# MOTOR DE EVOLUÇÃO
-# ==========================================
+        for dim, peso in weights.items():
+            valor = athlete.dimension_scores.get(dim, 0)
+            score += valor * peso
 
-class EvolutionEngine:
+        athlete.score_global = round(score, 2)
 
-    def calculate_trend(self, athlete):
-        if len(athlete.history) < 2:
-            return 0
+    # ------------------------------------------------------
 
-        return athlete.history[-1] - athlete.history[-2]
+    def classificar(self, athlete):
 
-    def calculate_consistency(self, athlete):
-        if len(athlete.history) < 2:
-            return 1
+        score = athlete.score_global
 
-        return 1 - (np.std(athlete.history) / 100)
+        if score < 40:
+            athlete.classificacao = "Crítico"
+        elif score < 60:
+            athlete.classificacao = "Desenvolvimento"
+        elif score < 75:
+            athlete.classificacao = "Competitivo"
+        elif score < 90:
+            athlete.classificacao = "Alto Rendimento"
+        else:
+            athlete.classificacao = "Elite Mundial"
 
+    # ------------------------------------------------------
 
-# ==========================================
-# MOTOR DE RISCO
-# ==========================================
+    def gerar_diagnostico(self, athlete):
 
-class RiskEngine:
+        pontos_fracos = []
+        pontos_fortes = []
 
-    def calculate_risk(self, athlete):
-        trend = EvolutionEngine().calculate_trend(athlete)
-        risk = 1 / (1 + np.exp(-trend))
-        return risk * 100
+        for dim, valor in athlete.dimension_scores.items():
+            if valor < 60:
+                pontos_fracos.append(dim)
+            elif valor > 80:
+                pontos_fortes.append(dim)
 
+        diagnostico = f"Classificação geral: {athlete.classificacao}. "
 
-# ==========================================
-# MOTOR GLOBAL
-# ==========================================
+        if pontos_fortes:
+            diagnostico += f"Pontos fortes identificados em {', '.join(pontos_fortes)}. "
 
-class GlobalPerformanceEngine:
+        if pontos_fracos:
+            diagnostico += f"Atenção necessária em {', '.join(pontos_fracos)}. "
 
-    def __init__(self):
-        self.scientific = ScientificEngine()
-        self.adaptive = AdaptiveEngine()
-        self.evolution = EvolutionEngine()
-        self.risk = RiskEngine()
+        if not pontos_fracos:
+            diagnostico += "Perfil equilibrado e estável."
+
+        athlete.diagnostico = diagnostico
+
+    # ------------------------------------------------------
 
     def run(self, athlete):
 
-        # 1. Calcular dimensões
-        self.scientific.calculate_subdimensions(athlete)
-        self.scientific.calculate_dimensions(athlete)
+        self.calcular_dimensoes(athlete)
 
-        # 2. Score científico
-        self.scientific.calculate_scientific_score(athlete)
+        weights = self.aplicar_pesos_adaptativos(athlete)
 
-        # 3. Ajuste adaptativo
-        weights = self.adaptive.adjust_weights(athlete)
-        self.adaptive.calculate_adaptive_score(athlete, weights)
+        self.calcular_score_global(athlete, weights)
 
-        # 4. Evolução
-        trend = self.evolution.calculate_trend(athlete)
-        consistency = self.evolution.calculate_consistency(athlete)
+        self.classificar(athlete)
 
-        # 5. Risco
-        risk = self.risk.calculate_risk(athlete)
+        self.gerar_diagnostico(athlete)
 
-        # 6. Score final
-        athlete.final_score = athlete.adaptive_score + trend + consistency - risk
-
-        return athlete
+        return {
+            "score_fisico": athlete.dimension_scores.get("fisico"),
+            "score_fisiologico": athlete.dimension_scores.get("fisiologico"),
+            "score_tecnico": athlete.dimension_scores.get("tecnico"),
+            "score_mental": athlete.dimension_scores.get("mental"),
+            "score_recuperacao": athlete.dimension_scores.get("recuperacao"),
+            "score_global": athlete.score_global,
+            "nivel_classificacao": athlete.classificacao,
+            "diagnostico": athlete.diagnostico,
+            "data_calculo": str(date.today())
+        }
