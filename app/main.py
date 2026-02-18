@@ -164,3 +164,53 @@ def analisar_e_salvar_atleta(dados: DadosAnalise):
         "status": "salvo_com_sucesso",
         "resultado": resultado
     }
+
+# =====================================================
+# AGP CORE ENGINE V2 — ANÁLISE + VINCULAÇÃO AO ATLETA
+# =====================================================
+
+class DadosAnaliseVinculada(DadosAnalise):
+    atleta_id: str
+
+
+@app.post("/analisar-e-salvar-atleta-vinculado")
+def analisar_e_salvar_atleta_vinculado(dados: DadosAnaliseVinculada):
+
+    profile = {
+        "idade": dados.idade,
+        "nivel": dados.nivel
+    }
+
+    normalized_data = {
+        "fisiologico": dados.fisiologica,
+        "tecnico": dados.tecnica,
+        "recuperacao": dados.recuperacao,
+        "mental": dados.psicologica,
+        "fisico": dados.fisica,
+        "contextual": dados.contextual
+    }
+
+    atleta = Athlete(profile=profile, normalized_data=normalized_data)
+
+    engine = GlobalPerformanceEngine()
+    resultado = engine.run(atleta)
+
+    dados_para_salvar = {
+        "atleta_id": dados.atleta_id,
+        "score_fisico": resultado["score_fisico"],
+        "score_fisiologico": resultado["score_fisiologico"],
+        "score_tecnico": resultado["score_tecnico"],
+        "score_mental": resultado["score_mental"],
+        "score_recuperacao": resultado["score_recuperacao"],
+        "score_global": resultado["score_global"],
+        "nivel_classificacao": resultado["nivel_classificacao"],
+        "diagnostico": resultado["diagnostico"],
+        "data_calculo": resultado["data_calculo"]
+    }
+
+    salvar_score_atleta(dados_para_salvar)
+
+    return {
+        "status": "score_vinculado_salvo",
+        "resultado": resultado
+    }
