@@ -245,3 +245,36 @@ def analise_longitudinal(atleta_id: str):
         "previsao": previsao,
         "historico_scores": scores
     }
+
+# =====================================================
+# IA DE INTERVENÇÃO AUTOMÁTICA
+# =====================================================
+
+from app.agp_intervention_ai import avaliar_intervencao
+
+
+@app.post("/avaliar-intervencao/{atleta_id}")
+def avaliar_intervencao_endpoint(atleta_id: str):
+
+    url = f"{SUPABASE_URL}/rest/v1/score_atleta?atleta_id=eq.{atleta_id}&order=data_calculo.asc"
+
+    response = requests.get(url, headers=HEADERS)
+    dados = response.json()
+
+    if not dados or len(dados) < 3:
+        return {"mensagem": "Histórico insuficiente para intervenção"}
+
+    scores = [d["score_global"] for d in dados]
+
+    from app.agp_longitudinal_ai import analisar_tendencia, detectar_risco
+
+    tendencia = analisar_tendencia(scores)
+    risco = detectar_risco(scores)
+
+    avaliar_intervencao(atleta_id, tendencia, risco)
+
+    return {
+        "tendencia": tendencia,
+        "risco": risco,
+        "intervencao_executada": True
+    }
