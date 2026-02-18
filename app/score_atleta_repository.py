@@ -1,6 +1,15 @@
-from app.supabase_client import supabase
+import requests
+from app.supabase_client import SUPABASE_URL, HEADERS
 
 
 def salvar_score_atleta(dados_score: dict):
-    response = supabase.table("score_atleta").insert(dados_score).execute()
-    return response.data
+
+    url = f"{SUPABASE_URL}/rest/v1/score_atleta"
+
+    response = requests.post(
+        url,
+        json=dados_score,
+        headers=HEADERS
+    )
+
+    return response.json()
