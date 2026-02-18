@@ -88,3 +88,31 @@ def analisar_atleta(dados: DadosAnalise):
         "score_adaptativo": resultado.adaptive_score,
         "score_final": resultado.final_score
     }
+
+# =====================================================
+# AGP CORE ENGINE V2 — ENDPOINT PROFISSIONAL
+# =====================================================
+
+@app.post("/analisar-atleta-v2")
+def analisar_atleta_v2(dados: DadosAnalise):
+
+    profile = {
+        "idade": dados.idade,
+        "nivel": dados.nivel
+    }
+
+    normalized_data = {
+        "fisiologico": dados.fisiologica,
+        "tecnico": dados.tecnica,
+        "recuperacao": dados.recuperacao,
+        "mental": dados.psicologica,
+        "fisico": dados.fisica,
+        "contextual": dados.contextual
+    }
+
+    atleta = Athlete(profile=profile, normalized_data=normalized_data)
+
+    engine = GlobalPerformanceEngine()
+    resultado = engine.run(atleta)
+
+    return resultado
