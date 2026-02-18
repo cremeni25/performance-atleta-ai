@@ -214,3 +214,34 @@ def analisar_e_salvar_atleta_vinculado(dados: DadosAnaliseVinculada):
         "status": "score_vinculado_salvo",
         "resultado": resultado
     }
+
+# =====================================================
+# IA LONGITUDINAL — ANÁLISE HISTÓRICA DO ATLETA
+# =====================================================
+
+from app.agp_longitudinal_ai import analisar_tendencia, detectar_risco, prever_nivel
+
+
+@app.get("/analise-longitudinal/{atleta_id}")
+def analise_longitudinal(atleta_id: str):
+
+    url = f"{SUPABASE_URL}/rest/v1/score_atleta?atleta_id=eq.{atleta_id}&order=data_calculo.asc"
+
+    response = requests.get(url, headers=HEADERS)
+    dados = response.json()
+
+    if not dados:
+        return {"mensagem": "Sem histórico suficiente"}
+
+    scores = [d["score_global"] for d in dados]
+
+    tendencia = analisar_tendencia(scores)
+    risco = detectar_risco(scores)
+    previsao = prever_nivel(scores[-1])
+
+    return {
+        "tendencia": tendencia,
+        "risco": risco,
+        "previsao": previsao,
+        "historico_scores": scores
+    }
