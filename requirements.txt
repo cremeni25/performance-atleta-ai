@@ -3,8 +3,4 @@ uvicorn==0.29.0
 pydantic==1.10.13
 requests==2.31.0
 numpy==1.26.4
-
-supabase==2.3.1
-gotrue==2.3.0
-postgrest==0.16.8
-httpx==0.23.3
+supabase==2.4.0
