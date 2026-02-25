@@ -1,16 +1,43 @@
-import requests
+import os
+from supabase import create_client, Client
 
-SUPABASE_URL = "https://kvmtfngxkeodkqrxbjwo.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bXRmbmd4a2VvZGtxcnhiandvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyOTE3NDIsImV4cCI6MjA4Njg2Nzc0Mn0.T4c9OtAp7m7kTWznzGZNWHKyuwQMJp2sgqTco6MHtQw"
 
-HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "return=representation"
-}
+# ==============================
+# CONFIGURAÇÃO SUPABASE
+# ==============================
 
-def inserir_atleta(data: dict):
-    url = f"{SUPABASE_URL}/rest/v1/perfis_atletas"
-    response = requests.post(url, json=data, headers=HEADERS)
-    return response.json()
+SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")
+SUPABASE_KEY: str | None = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL:
+    raise ValueError("SUPABASE_URL não definida nas variáveis de ambiente.")
+
+if not SUPABASE_KEY:
+    raise ValueError("SUPABASE_SERVICE_ROLE_KEY não definida nas variáveis de ambiente.")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+# ==============================
+# INSERÇÃO DE ATLETA
+# ==============================
+
+def inserir_atleta(dados: dict):
+    """
+    Insere um novo atleta na tabela perfis_atletas.
+    """
+
+    try:
+        response = supabase.table("perfis_atletas").insert({
+            "nome": dados["nome"],
+            "idade": dados["idade"],
+            "sexo": dados["sexo"],
+            "nivel": dados["nivel"],
+            "esporte_id": dados["esporte_id"],
+            "modalidade_id": dados["modalidade_id"],
+        }).execute()
+
+        return response
+
+    except Exception as e:
+        raise Exception(f"Erro ao inserir atleta: {str(e)}")
