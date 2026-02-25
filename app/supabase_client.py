@@ -10,16 +10,16 @@ if not SUPABASE_URL:
 if not SUPABASE_KEY:
     raise ValueError("SUPABASE_SERVICE_ROLE_KEY não definida.")
 
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
+
 
 def inserir_atleta(dados: dict):
     url = f"{SUPABASE_URL}/rest/v1/perfis_atletas"
-
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
 
     payload = {
         "nome": dados["nome"],
@@ -30,7 +30,7 @@ def inserir_atleta(dados: dict):
         "modalidade_id": dados["modalidade_id"]
     }
 
-    response = requests.post(url, json=payload, headers=headers)
+    response = requests.post(url, json=payload, headers=HEADERS)
 
     if response.status_code >= 400:
         raise Exception(f"Erro Supabase: {response.text}")
