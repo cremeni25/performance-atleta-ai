@@ -1,43 +1,38 @@
 import os
-from supabase import create_client, Client
+import requests
 
-
-# ==============================
-# CONFIGURAÇÃO SUPABASE
-# ==============================
-
-SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")
-SUPABASE_KEY: str | None = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SUPABASE_URL:
-    raise ValueError("SUPABASE_URL não definida nas variáveis de ambiente.")
+    raise ValueError("SUPABASE_URL não definida.")
 
 if not SUPABASE_KEY:
-    raise ValueError("SUPABASE_SERVICE_ROLE_KEY não definida nas variáveis de ambiente.")
+    raise ValueError("SUPABASE_SERVICE_ROLE_KEY não definida.")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-
-# ==============================
-# INSERÇÃO DE ATLETA
-# ==============================
 
 def inserir_atleta(dados: dict):
-    """
-    Insere um novo atleta na tabela perfis_atletas.
-    """
+    url = f"{SUPABASE_URL}/rest/v1/perfis_atletas"
 
-    try:
-        response = supabase.table("perfis_atletas").insert({
-            "nome": dados["nome"],
-            "idade": dados["idade"],
-            "sexo": dados["sexo"],
-            "nivel": dados["nivel"],
-            "esporte_id": dados["esporte_id"],
-            "modalidade_id": dados["modalidade_id"],
-        }).execute()
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
 
-        return response
+    payload = {
+        "nome": dados["nome"],
+        "idade": dados["idade"],
+        "sexo": dados["sexo"],
+        "nivel": dados["nivel"],
+        "esporte_id": dados["esporte_id"],
+        "modalidade_id": dados["modalidade_id"]
+    }
 
-    except Exception as e:
-        raise Exception(f"Erro ao inserir atleta: {str(e)}")
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code >= 400:
+        raise Exception(f"Erro Supabase: {response.text}")
+
+    return response.json()
