@@ -1,3 +1,5 @@
+# main.py
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -101,10 +103,10 @@ def dashboard_atleta(auth_id: str):
     score_url = f"{SUPABASE_URL}/rest/v1/score_atleta?atleta_id=eq.{atleta_id}&order=data_calculo.desc&limit=1"
     score = requests.get(score_url, headers=HEADERS).json()
 
-    carga_url = f"{SUPABASE_URL}/rest/v1/carga_treinamento_atleta?atleta_id=eq.{atleta_id}&order=data.desc&limit=7"
+    carga_url = f"{SUPABASE_URL}/rest/v1/carga_treinamento_atleta?atleta_id=eq.{atleta_id}&order=data_treino.desc&limit=7"
     carga = requests.get(carga_url, headers=HEADERS).json()
 
-    sono_url = f"{SUPABASE_URL}/rest/v1/sono_atleta?atleta_id=eq.{atleta_id}&order=data.desc&limit=7"
+    sono_url = f"{SUPABASE_URL}/rest/v1/sono_atleta?atleta_id=eq.{atleta_id}&order=data_registro.desc&limit=7"
     sono = requests.get(sono_url, headers=HEADERS).json()
 
     return {
@@ -116,7 +118,7 @@ def dashboard_atleta(auth_id: str):
 
 
 # =====================================================
-# AGP CORE ENGINE V2 — ENDPOINT PROFISSIONAL
+# AGP CORE ENGINE V2
 # =====================================================
 
 @app.post("/analisar-atleta-v2")
@@ -145,7 +147,7 @@ def analisar_atleta_v2(dados: DadosAnalise):
 
 
 # =====================================================
-# ANALISE + SALVAR SCORE
+# ANALISAR E SALVAR SCORE
 # =====================================================
 
 @app.post("/analisar-e-salvar-atleta-vinculado")
