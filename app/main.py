@@ -1,10 +1,24 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from app.supabase_client import inserir_atleta
+import requests
+import os
+
+from app.supabase_client import inserir_atleta, supabase
+from app.score_atleta_repository import salvar_score_atleta
+from app.agp_core_engine import Athlete, GlobalPerformanceEngine
+
+from app.agp_longitudinal_ai import analisar_tendencia, detectar_risco, prever_nivel
+from app.agp_intervention_ai import avaliar_intervencao
+from app.agp_institutional_ai import buscar_scores_clube, calcular_indicadores, gerar_diagnostico_institucional
+from app.agp_global_ai import gerar_ranking_global, calcular_indicadores_globais
 
 
 app = FastAPI()
+
+# =========================
+# CORS
+# =========================
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,6 +28,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# =========================
+# CONFIG SUPABASE
+# =========================
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}"
+}
+
+# =========================
+# MODELOS
+# =========================
 
 class PerfilAtletaCreate(BaseModel):
     nome: str
@@ -24,10 +53,33 @@ class PerfilAtletaCreate(BaseModel):
     modalidade_id: str
 
 
+class DadosAnalise(BaseModel):
+    idade: int
+    nivel: str
+
+    fisiologica: list[float]
+    tecnica: list[float]
+    recuperacao: list[float]
+    psicologica: list[float]
+    fisica: list[float]
+    contextual: list[float]
+
+
+class DadosAnaliseVinculada(DadosAnalise):
+    atleta_id: str
+
+
+# =========================
+# STATUS API
+# =========================
+
 @app.get("/")
 def root():
-    return {"status": "online"}
+    return {"status": "AGP Backend Online"}
 
+# =========================
+# CRIAR ATLETA
+# =========================
 
 @app.post("/atletas")
 def criar_atleta(perfil: PerfilAtletaCreate):
@@ -40,58 +92,55 @@ def criar_atleta(perfil: PerfilAtletaCreate):
         "dados": resultado
     }
 
-# =====================================================
-# INTEGRAÇÃO AGP CORE ENGINE — ANÁLISE DE PERFORMANCE
-# =====================================================
+# =========================
+# DASHBOARD DO ATLETA
+# =========================
 
-from app.agp_core_engine import Athlete, GlobalPerformanceEngine
+@app.get("/athlete/dashboard/{auth_id}")
+def dashboard_atleta(auth_id: str):
 
-class DadosAnalise(BaseModel):
-    idade: int
-    nivel: str
+    perfil = supabase.table("perfis_atletas") \
+        .select("*") \
+        .eq("auth_id", auth_id) \
+        .maybe_single() \
+        .execute()
 
-    # Dados simulados das dimensões (0–100)
-    fisiologica: list[float]
-    tecnica: list[float]
-    recuperacao: list[float]
-    psicologica: list[float]
-    fisica: list[float]
-    contextual: list[float]
+    if not perfil.data:
+        raise HTTPException(status_code=404, detail="Perfil do atleta não encontrado")
 
-@app.post("/analisar-atleta")
-def analisar_atleta(dados: DadosAnalise):
+    atleta_id = perfil.data["id"]
 
-    # Perfil do atleta
-    profile = {
-        "idade": dados.idade,
-        "nivel": dados.nivel
-    }
+    score = supabase.table("score_atleta") \
+        .select("*") \
+        .eq("atleta_id", atleta_id) \
+        .order("data_calculo", desc=True) \
+        .limit(1) \
+        .execute()
 
-    # Dados estruturados para o motor
-    normalized_data = {
-        "fisiologica": dados.fisiologica,
-        "tecnica": dados.tecnica,
-        "recuperacao": dados.recuperacao,
-        "psicologica": dados.psicologica,
-        "fisica": dados.fisica,
-        "contextual": dados.contextual
-    }
+    carga = supabase.table("carga_treinamento_atleta") \
+        .select("*") \
+        .eq("atleta_id", atleta_id) \
+        .order("data", desc=True) \
+        .limit(7) \
+        .execute()
 
-    atleta = Athlete(profile=profile, data={}, history=[])
-    atleta.normalized_data = normalized_data
-
-    engine = GlobalPerformanceEngine()
-    resultado = engine.run(atleta)
+    sono = supabase.table("sono_atleta") \
+        .select("*") \
+        .eq("atleta_id", atleta_id) \
+        .order("data", desc=True) \
+        .limit(7) \
+        .execute()
 
     return {
-        "score_cientifico": resultado.scientific_score,
-        "score_adaptativo": resultado.adaptive_score,
-        "score_final": resultado.final_score
+        "perfil": perfil.data,
+        "score": score.data,
+        "carga": carga.data,
+        "sono": sono.data
     }
 
-# =====================================================
-# AGP CORE ENGINE V2 — ENDPOINT PROFISSIONAL
-# =====================================================
+# =========================
+# ANALISE CORE ENGINE
+# =========================
 
 @app.post("/analisar-atleta-v2")
 def analisar_atleta_v2(dados: DadosAnalise):
@@ -117,61 +166,9 @@ def analisar_atleta_v2(dados: DadosAnalise):
 
     return resultado
 
-# =====================================================
-# AGP CORE ENGINE V2 — ANÁLISE + PERSISTÊNCIA
-# =====================================================
-
-from app.score_atleta_repository import salvar_score_atleta
-
-
-@app.post("/analisar-e-salvar-atleta")
-def analisar_e_salvar_atleta(dados: DadosAnalise):
-
-    profile = {
-        "idade": dados.idade,
-        "nivel": dados.nivel
-    }
-
-    normalized_data = {
-        "fisiologico": dados.fisiologica,
-        "tecnico": dados.tecnica,
-        "recuperacao": dados.recuperacao,
-        "mental": dados.psicologica,
-        "fisico": dados.fisica,
-        "contextual": dados.contextual
-    }
-
-    atleta = Athlete(profile=profile, normalized_data=normalized_data)
-
-    engine = GlobalPerformanceEngine()
-    resultado = engine.run(atleta)
-
-    dados_para_salvar = {
-        "score_fisico": resultado["score_fisico"],
-        "score_fisiologico": resultado["score_fisiologico"],
-        "score_tecnico": resultado["score_tecnico"],
-        "score_mental": resultado["score_mental"],
-        "score_recuperacao": resultado["score_recuperacao"],
-        "score_global": resultado["score_global"],
-        "nivel_classificacao": resultado["nivel_classificacao"],
-        "diagnostico": resultado["diagnostico"],
-        "data_calculo": resultado["data_calculo"]
-    }
-
-    salvar_score_atleta(dados_para_salvar)
-
-    return {
-        "status": "salvo_com_sucesso",
-        "resultado": resultado
-    }
-
-# =====================================================
-# AGP CORE ENGINE V2 — ANÁLISE + VINCULAÇÃO AO ATLETA
-# =====================================================
-
-class DadosAnaliseVinculada(DadosAnalise):
-    atleta_id: str
-
+# =========================
+# ANALISE + SALVAR SCORE
+# =========================
 
 @app.post("/analisar-e-salvar-atleta-vinculado")
 def analisar_e_salvar_atleta_vinculado(dados: DadosAnaliseVinculada):
@@ -215,12 +212,9 @@ def analisar_e_salvar_atleta_vinculado(dados: DadosAnaliseVinculada):
         "resultado": resultado
     }
 
-# =====================================================
-# IA LONGITUDINAL — ANÁLISE HISTÓRICA DO ATLETA
-# =====================================================
-
-from app.agp_longitudinal_ai import analisar_tendencia, detectar_risco, prever_nivel
-
+# =========================
+# ANALISE LONGITUDINAL
+# =========================
 
 @app.get("/analise-longitudinal/{atleta_id}")
 def analise_longitudinal(atleta_id: str):
@@ -246,72 +240,9 @@ def analise_longitudinal(atleta_id: str):
         "historico_scores": scores
     }
 
-# =====================================================
-# IA DE INTERVENÇÃO AUTOMÁTICA
-# =====================================================
-
-from app.agp_intervention_ai import avaliar_intervencao
-
-
-@app.post("/avaliar-intervencao/{atleta_id}")
-def avaliar_intervencao_endpoint(atleta_id: str):
-
-    url = f"{SUPABASE_URL}/rest/v1/score_atleta?atleta_id=eq.{atleta_id}&order=data_calculo.asc"
-
-    response = requests.get(url, headers=HEADERS)
-    dados = response.json()
-
-    if not dados or len(dados) < 3:
-        return {"mensagem": "Histórico insuficiente para intervenção"}
-
-    scores = [d["score_global"] for d in dados]
-
-    from app.agp_longitudinal_ai import analisar_tendencia, detectar_risco
-
-    tendencia = analisar_tendencia(scores)
-    risco = detectar_risco(scores)
-
-    avaliar_intervencao(atleta_id, tendencia, risco)
-
-    return {
-        "tendencia": tendencia,
-        "risco": risco,
-        "intervencao_executada": True
-    }
-
-# =====================================================
-# IA INSTITUCIONAL — ANÁLISE DO CLUBE
-# =====================================================
-
-from app.agp_institutional_ai import buscar_scores_clube, calcular_indicadores, gerar_diagnostico_institucional
-
-
-@app.get("/analise-institucional/{clube_id}")
-def analise_institucional(clube_id: str):
-
-    scores = buscar_scores_clube(clube_id)
-
-    if not scores:
-        return {"mensagem": "Sem dados suficientes"}
-
-    indicadores = calcular_indicadores(scores)
-
-    diagnostico = gerar_diagnostico_institucional(indicadores["media_clube"])
-
-    ranking = sorted(scores, key=lambda x: x["score_global"], reverse=True)[:10]
-
-    return {
-        "indicadores": indicadores,
-        "diagnostico": diagnostico,
-        "ranking_top_10": ranking
-    }
-
-# =====================================================
-# IA GLOBAL — BENCHMARK ENTRE CLUBES
-# =====================================================
-
-from app.agp_global_ai import gerar_ranking_global, calcular_indicadores_globais
-
+# =========================
+# BENCHMARK GLOBAL
+# =========================
 
 @app.get("/benchmark-global")
 def benchmark_global():
