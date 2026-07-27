@@ -1,7 +1,8 @@
 """Inicialização segura do pacote AGP.
 
-O bootstrap é idempotente: confere o vínculo do proprietário e, somente enquanto
-o primeiro acesso não tiver sido provisionado, define uma senha temporária única.
+O bootstrap abaixo é idempotente: em cada inicialização do backend ele confere
+se o usuário proprietário permanece vinculado ao perfil Master. Nenhuma senha,
+segredo ou credencial de acesso é armazenada no código-fonte.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ OWNER_AUTH_ID = os.getenv(
     "AGP_OWNER_AUTH_ID",
     "14737212-032c-4b69-a6cb-a6fe80e8cf11",
 )
-TEMPORARY_MASTER_PASSWORD = "Agp!3hgjtlAGgJr2MOEawQypx51T"
 
 
 def _headers() -> dict[str, str] | None:
@@ -79,41 +79,6 @@ def _insert_profile(payload: dict[str, Any]) -> bool:
     return response.status_code < 400
 
 
-def _provision_temporary_password() -> None:
-    user_path = f"/auth/v1/admin/users/{OWNER_AUTH_ID}"
-    current = _request("GET", user_path)
-    if current.status_code >= 400:
-        raise RuntimeError(f"Falha ao consultar usuário Auth: {current.text}")
-
-    user = current.json()
-    metadata = user.get("user_metadata") or {}
-    if metadata.get("agp_initial_password_issued") is True:
-        LOGGER.info("Senha inicial do Master já foi provisionada")
-        return
-
-    metadata.update(
-        {
-            "agp_initial_password_issued": True,
-            "tipo_usuario": "master",
-            "is_owner": True,
-        }
-    )
-    response = _request(
-        "PUT",
-        user_path,
-        data=json.dumps(
-            {
-                "password": TEMPORARY_MASTER_PASSWORD,
-                "email_confirm": True,
-                "user_metadata": metadata,
-            }
-        ),
-    )
-    if response.status_code >= 400:
-        raise RuntimeError(f"Falha ao provisionar senha inicial: {response.text}")
-    LOGGER.info("Senha temporária do Master provisionada com sucesso")
-
-
 def bootstrap_master_owner() -> None:
     """Vincula o proprietário ao perfil Master sem duplicar registros."""
 
@@ -133,41 +98,43 @@ def bootstrap_master_owner() -> None:
 
         if profile:
             current = str(profile.get("tipo_usuario") or profile.get("funcao") or "").lower()
-            if current != "master":
-                for payload in variants:
-                    if _patch_profile(payload):
-                        break
-                else:
-                    raise RuntimeError("Nenhuma estrutura compatível permitiu atualizar o perfil")
-        else:
-            insert_variants = [
-                {
-                    "auth_id": OWNER_AUTH_ID,
-                    "email": OWNER_EMAIL,
-                    "nome": "Anderson Navarro",
-                    "tipo_usuario": "master",
-                    "funcao": "master",
-                },
-                {
-                    "auth_id": OWNER_AUTH_ID,
-                    "email": OWNER_EMAIL,
-                    "nome": "Anderson Navarro",
-                    "tipo_usuario": "master",
-                },
-                {
-                    "auth_id": OWNER_AUTH_ID,
-                    "email": OWNER_EMAIL,
-                    "nome": "Anderson Navarro",
-                    "funcao": "master",
-                },
-            ]
-            for payload in insert_variants:
-                if _insert_profile(payload):
-                    break
-            else:
-                raise RuntimeError("Não foi possível criar o perfil Master")
+            if current == "master":
+                LOGGER.info("Master Owner já configurado para %s", OWNER_EMAIL)
+                return
 
-        _provision_temporary_password()
+            for payload in variants:
+                if _patch_profile(payload):
+                    LOGGER.info("Master Owner atualizado com sucesso para %s", OWNER_EMAIL)
+                    return
+            raise RuntimeError("Nenhuma estrutura compatível permitiu atualizar o perfil")
+
+        insert_variants = [
+            {
+                "auth_id": OWNER_AUTH_ID,
+                "email": OWNER_EMAIL,
+                "nome": "Anderson Navarro",
+                "tipo_usuario": "master",
+                "funcao": "master",
+            },
+            {
+                "auth_id": OWNER_AUTH_ID,
+                "email": OWNER_EMAIL,
+                "nome": "Anderson Navarro",
+                "tipo_usuario": "master",
+            },
+            {
+                "auth_id": OWNER_AUTH_ID,
+                "email": OWNER_EMAIL,
+                "nome": "Anderson Navarro",
+                "funcao": "master",
+            },
+        ]
+
+        for payload in insert_variants:
+            if _insert_profile(payload):
+                LOGGER.info("Master Owner criado com sucesso para %s", OWNER_EMAIL)
+                return
+        raise RuntimeError("Não foi possível criar o perfil Master")
     except Exception as exc:
         LOGGER.exception("Falha controlada no bootstrap Master Owner: %s", exc)
 
