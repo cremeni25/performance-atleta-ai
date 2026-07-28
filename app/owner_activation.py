@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import requests
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/owner", tags=["owner-activation"])
 
@@ -18,7 +18,7 @@ ACTIVATION_CODE_SHA256 = "38b3e9a40a57eb01e6b53121ae1208d46d716b931727a314093571
 
 
 class OwnerActivationRequest(BaseModel):
-    email: EmailStr
+    email: str
     activation_code: str
     new_password: str
 
@@ -54,6 +54,8 @@ def _user_url() -> str:
 @router.post("/activate")
 def activate_owner(payload: OwnerActivationRequest):
     email = payload.email.strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=422, detail="E-mail inválido")
     if not hmac.compare_digest(email, OWNER_EMAIL.lower()):
         raise HTTPException(status_code=403, detail="Ativação não autorizada")
 
