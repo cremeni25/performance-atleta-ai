@@ -14,7 +14,7 @@ router = APIRouter(prefix="/owner", tags=["owner-activation"])
 
 OWNER_EMAIL = os.getenv("AGP_OWNER_EMAIL", "anderson@cremeni.com.br")
 OWNER_AUTH_ID = os.getenv("AGP_OWNER_AUTH_ID", "14737212-032c-4b69-a6cb-a6fe80e8cf11")
-ACTIVATION_CODE_SHA256 = "bfe83e4ecc9b657e7f48a936608af8f2c3436ea98e0b4023dc3455d1c1171489"
+ACTIVATION_CODE_SHA256 = "38b3e9a40a57eb01e6b53121ae1208d46d716b931727a314093571c06823d74d"
 
 
 class OwnerActivationRequest(BaseModel):
