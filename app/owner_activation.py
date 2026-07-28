@@ -13,7 +13,6 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/owner", tags=["owner-activation"])
 
 OWNER_EMAIL = os.getenv("AGP_OWNER_EMAIL", "anderson@cremeni.com.br")
-OWNER_AUTH_ID = os.getenv("AGP_OWNER_AUTH_ID", "14737212-032c-4b69-a6cb-a6fe80e8cf11")
 ACTIVATION_CODE_SHA256 = "172ad9c770615e23fbf7cf8ac64b72ed3b2d2d35311fab0c7a4d69c90f7fe023"
 
 
@@ -33,6 +32,13 @@ def _validate_password(value: str) -> bool:
     )
 
 
+def _supabase_url() -> str:
+    base = os.getenv("SUPABASE_URL")
+    if not base:
+        raise HTTPException(status_code=503, detail="Serviço de ativação indisponível")
+    return base.rstrip("/")
+
+
 def _admin_headers() -> dict[str, str]:
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not key:
@@ -44,11 +50,35 @@ def _admin_headers() -> dict[str, str]:
     }
 
 
-def _user_url() -> str:
-    base = os.getenv("SUPABASE_URL")
-    if not base:
-        raise HTTPException(status_code=503, detail="Serviço de ativação indisponível")
-    return f"{base.rstrip('/')}/auth/v1/admin/users/{OWNER_AUTH_ID}"
+def _find_user_by_email(email: str) -> dict:
+    base = _supabase_url()
+    headers = _admin_headers()
+
+    for page in range(1, 101):
+        response = requests.get(
+            f"{base}/auth/v1/admin/users",
+            headers=headers,
+            params={"page": page, "per_page": 1000},
+            timeout=20,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=502, detail="Não foi possível consultar os usuários do AGP")
+
+        payload = response.json()
+        users = payload.get("users", []) if isinstance(payload, dict) else []
+
+        for user in users:
+            if str(user.get("email", "")).strip().lower() == email:
+                return user
+
+        if len(users) < 1000:
+            break
+
+    raise HTTPException(status_code=404, detail="Usuário proprietário não localizado no AGP")
+
+
+def _user_url(user_id: str) -> str:
+    return f"{_supabase_url()}/auth/v1/admin/users/{user_id}"
 
 
 @router.post("/activate")
@@ -69,11 +99,11 @@ def activate_owner(payload: OwnerActivationRequest):
             detail="A senha deve ter no mínimo 12 caracteres, com maiúscula, minúscula, número e símbolo",
         )
 
-    user_response = requests.get(_user_url(), headers=_admin_headers(), timeout=15)
-    if user_response.status_code >= 400:
-        raise HTTPException(status_code=502, detail="Não foi possível consultar o usuário proprietário")
+    user = _find_user_by_email(email)
+    user_id = str(user.get("id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=502, detail="Cadastro proprietário inconsistente")
 
-    user = user_response.json()
     metadata = user.get("user_metadata") or {}
     if metadata.get("agp_owner_activation_completed") is True:
         raise HTTPException(status_code=409, detail="A ativação do proprietário já foi concluída")
@@ -90,14 +120,14 @@ def activate_owner(payload: OwnerActivationRequest):
     )
 
     update_response = requests.put(
-        _user_url(),
+        _user_url(user_id),
         headers=_admin_headers(),
         json={
             "password": payload.new_password,
             "email_confirm": True,
             "user_metadata": metadata,
         },
-        timeout=15,
+        timeout=20,
     )
     if update_response.status_code >= 400:
         raise HTTPException(status_code=502, detail="Não foi possível concluir a ativação")
