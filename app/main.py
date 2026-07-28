@@ -15,11 +15,13 @@ from app.agp_intervention_ai import avaliar_intervencao
 from app.agp_institutional_ai import buscar_scores_clube, calcular_indicadores, gerar_diagnostico_institucional
 from app.agp_global_ai import gerar_ranking_global, calcular_indicadores_globais
 from app.owner_activation import ensure_owner_profile, router as owner_activation_router
+from app.user_provisioning import router as user_provisioning_router
 
 LOGGER = logging.getLogger("agp.startup")
 
 app = FastAPI()
 app.include_router(owner_activation_router)
+app.include_router(user_provisioning_router)
 
 app.add_middleware(
     CORSMiddleware,
