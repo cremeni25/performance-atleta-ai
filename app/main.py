@@ -1,5 +1,7 @@
 # main.py
 
+import logging
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,7 +14,9 @@ from app.agp_longitudinal_ai import analisar_tendencia, detectar_risco, prever_n
 from app.agp_intervention_ai import avaliar_intervencao
 from app.agp_institutional_ai import buscar_scores_clube, calcular_indicadores, gerar_diagnostico_institucional
 from app.agp_global_ai import gerar_ranking_global, calcular_indicadores_globais
-from app.owner_activation import router as owner_activation_router
+from app.owner_activation import ensure_owner_profile, router as owner_activation_router
+
+LOGGER = logging.getLogger("agp.startup")
 
 app = FastAPI()
 app.include_router(owner_activation_router)
@@ -24,6 +28,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def repair_owner_profile_on_startup():
+    try:
+        result = ensure_owner_profile()
+        LOGGER.info("Perfil proprietário validado: %s", result)
+    except Exception as exc:
+        LOGGER.exception("Falha controlada ao validar perfil proprietário: %s", exc)
 
 
 class PerfilAtletaCreate(BaseModel):
