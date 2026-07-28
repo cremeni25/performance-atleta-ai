@@ -39,15 +39,18 @@ def _supabase_url() -> str:
     return base.rstrip("/")
 
 
-def _admin_headers() -> dict[str, str]:
+def _admin_headers(prefer_representation: bool = False) -> dict[str, str]:
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not key:
         raise HTTPException(status_code=503, detail="Serviço de ativação indisponível")
-    return {
+    headers = {
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
+    if prefer_representation:
+        headers["Prefer"] = "return=representation"
+    return headers
 
 
 def _find_user_by_email(email: str) -> dict:
@@ -81,6 +84,61 @@ def _user_url(user_id: str) -> str:
     return f"{_supabase_url()}/auth/v1/admin/users/{user_id}"
 
 
+def ensure_owner_profile() -> dict:
+    """Garante vínculo idempotente entre Auth e perfil Master."""
+    email = OWNER_EMAIL.strip().lower()
+    user = _find_user_by_email(email)
+    user_id = str(user.get("id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=502, detail="Cadastro proprietário inconsistente")
+
+    base = _supabase_url()
+    headers = _admin_headers(prefer_representation=True)
+    select_url = f"{base}/rest/v1/perfis_atletas"
+
+    response = requests.get(
+        select_url,
+        headers=headers,
+        params={"or": f"(auth_id.eq.{user_id},email.eq.{email})", "select": "*"},
+        timeout=20,
+    )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail="Não foi possível consultar o perfil proprietário")
+
+    rows = response.json() if isinstance(response.json(), list) else []
+    payload_variants = [
+        {"auth_id": user_id, "email": email, "nome": "Anderson Navarro", "tipo_usuario": "master", "funcao": "master"},
+        {"auth_id": user_id, "email": email, "nome": "Anderson Navarro", "tipo_usuario": "master"},
+        {"auth_id": user_id, "email": email, "nome": "Anderson Navarro", "funcao": "master"},
+    ]
+
+    if rows:
+        row_id = rows[0].get("id")
+        filters = {"id": f"eq.{row_id}"} if row_id else {"email": f"eq.{email}"}
+        for profile_payload in payload_variants:
+            patch = requests.patch(
+                select_url,
+                headers=headers,
+                params=filters,
+                json=profile_payload,
+                timeout=20,
+            )
+            if patch.status_code < 400:
+                return {"status": "updated", "auth_id": user_id}
+    else:
+        for profile_payload in payload_variants:
+            insert = requests.post(
+                select_url,
+                headers=headers,
+                json=profile_payload,
+                timeout=20,
+            )
+            if insert.status_code < 400:
+                return {"status": "created", "auth_id": user_id}
+
+    raise HTTPException(status_code=502, detail="Não foi possível vincular o perfil Master")
+
+
 @router.post("/activate")
 def activate_owner(payload: OwnerActivationRequest):
     email = payload.email.strip().lower()
@@ -106,7 +164,8 @@ def activate_owner(payload: OwnerActivationRequest):
 
     metadata = user.get("user_metadata") or {}
     if metadata.get("agp_owner_activation_completed") is True:
-        raise HTTPException(status_code=409, detail="A ativação do proprietário já foi concluída")
+        ensure_owner_profile()
+        return {"status": "already_activated", "message": "Acesso proprietário já ativado e perfil validado"}
 
     metadata.update(
         {
@@ -132,4 +191,10 @@ def activate_owner(payload: OwnerActivationRequest):
     if update_response.status_code >= 400:
         raise HTTPException(status_code=502, detail="Não foi possível concluir a ativação")
 
+    ensure_owner_profile()
     return {"status": "activated", "message": "Acesso proprietário ativado com sucesso"}
+
+
+@router.post("/repair-profile")
+def repair_owner_profile():
+    return ensure_owner_profile()
