@@ -6,7 +6,7 @@ from uuid import UUID
 
 import requests
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, Field, root_validator
 
 from app.supabase_client import HEADERS, SUPABASE_KEY, SUPABASE_URL
 
@@ -41,14 +41,14 @@ class SportProfileInput(BaseModel):
 
 class AccessInput(BaseModel):
     auth_id: UUID | None = None
-    email_acesso: EmailStr | None = None
+    email_acesso: str | None = Field(default=None, max_length=320)
 
 
 class ParticipantCreate(BaseModel):
     nome: str = Field(min_length=2, max_length=200)
     nome_social: str | None = Field(default=None, max_length=200)
     data_nascimento: date | None = None
-    email_contato: EmailStr | None = None
+    email_contato: str | None = Field(default=None, max_length=320)
     telefone_contato: str | None = Field(default=None, max_length=40)
     documento_referencia: str | None = Field(default=None, max_length=120)
     papel: Role
@@ -58,13 +58,16 @@ class ParticipantCreate(BaseModel):
     acesso: AccessInput | None = None
     perfil_esportivo: SportProfileInput | None = None
 
-    @model_validator(mode="after")
-    def validate_role_requirements(self) -> "ParticipantCreate":
-        if self.papel == "atleta" and self.perfil_esportivo is None:
+    @root_validator
+    def validate_role_requirements(cls, values: dict[str, Any]) -> dict[str, Any]:
+        role = values.get("papel")
+        sport_profile = values.get("perfil_esportivo")
+        technician_id = values.get("tecnico_responsavel_pessoa_id")
+        if role == "atleta" and sport_profile is None:
             raise ValueError("perfil_esportivo é obrigatório para atleta")
-        if self.tecnico_responsavel_pessoa_id and self.papel != "atleta":
+        if technician_id and role != "atleta":
             raise ValueError("técnico responsável só pode ser atribuído a atleta")
-        return self
+        return values
 
 
 class ParticipantResponse(BaseModel):
@@ -77,7 +80,14 @@ class ParticipantResponse(BaseModel):
     pendencias: list[str]
 
 
-def _request(method: str, path: str, *, payload: Any | None = None, params: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> Any:
+def _request(
+    method: str,
+    path: str,
+    *,
+    payload: Any | None = None,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> Any:
     response = requests.request(
         method,
         f"{SUPABASE_URL}{path}",
@@ -189,7 +199,7 @@ def create_participant(
                     "nome": payload.nome.strip(),
                     "nome_social": payload.nome_social,
                     "data_nascimento": payload.data_nascimento.isoformat() if payload.data_nascimento else None,
-                    "email_contato": str(payload.email_contato) if payload.email_contato else None,
+                    "email_contato": payload.email_contato,
                     "telefone_contato": payload.telefone_contato,
                     "documento_referencia": payload.documento_referencia,
                     "status": "ativo",
@@ -228,7 +238,7 @@ def create_participant(
                     payload={
                         "pessoa_id": str(person_id),
                         "auth_id": str(payload.acesso.auth_id) if payload.acesso.auth_id else None,
-                        "email_acesso": str(payload.acesso.email_acesso) if payload.acesso.email_acesso else None,
+                        "email_acesso": payload.acesso.email_acesso,
                         "status": "ativo" if payload.acesso.auth_id else "acesso_pendente",
                     },
                 ),
