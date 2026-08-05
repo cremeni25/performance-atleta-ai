@@ -25,6 +25,7 @@ from app.analytic_pipeline import router as analytic_pipeline_router
 from app.professional_validation import router as professional_validation_router
 from app.institution_management import router as institution_management_router
 from app.project_management import router as project_management_router
+from app.technical_team_management import router as technical_team_management_router
 
 LOGGER = logging.getLogger("agp.startup")
 
@@ -40,6 +41,7 @@ app.include_router(analytic_pipeline_router)
 app.include_router(professional_validation_router)
 app.include_router(institution_management_router)
 app.include_router(project_management_router)
+app.include_router(technical_team_management_router)
 
 app.add_middleware(
     CORSMiddleware,
