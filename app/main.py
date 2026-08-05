@@ -19,6 +19,7 @@ from app.participant_onboarding import router as participant_onboarding_router
 from app.consent_management import router as consent_management_router
 from app.baseline_management import router as baseline_management_router
 from app.eligibility_management import router as eligibility_management_router
+from app.protocol_catalog import router as protocol_catalog_router
 
 LOGGER = logging.getLogger("agp.startup")
 
@@ -28,6 +29,7 @@ app.include_router(participant_onboarding_router)
 app.include_router(consent_management_router)
 app.include_router(baseline_management_router)
 app.include_router(eligibility_management_router)
+app.include_router(protocol_catalog_router)
 
 app.add_middleware(
     CORSMiddleware,
