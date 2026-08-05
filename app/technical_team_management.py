@@ -40,6 +40,101 @@ def _institution_exists(institution_id: UUID) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Instituição não encontrada")
 
 
+def _canonical_role(role: str) -> str:
+    return {
+        "admin_institucional": "gestor",
+        "tecnico": "tecnico",
+        "assistente": "analista",
+        "observador": "analista",
+    }.get(role, "tecnico")
+
+
+def _ensure_canonical_person(member: dict[str, Any], operator_id: UUID) -> UUID:
+    auth_id = str(member.get("auth_id") or "").strip()
+    institution_id = str(member.get("instituicao_id") or "").strip()
+    if not auth_id or not institution_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Vínculo técnico sem usuário ou instituição")
+
+    account_rows = _request(
+        "GET",
+        "/rest/v1/agp_contas_acesso",
+        params={"auth_id": f"eq.{auth_id}", "select": "id,pessoa_id", "limit": "1"},
+    )
+
+    if isinstance(account_rows, list) and account_rows:
+        person_id = UUID(account_rows[0]["pessoa_id"])
+    else:
+        email = str(member.get("email") or "").strip() or None
+        person_rows: list[dict[str, Any]] = []
+        if email:
+            result = _request(
+                "GET",
+                "/rest/v1/agp_pessoas",
+                params={"email_contato": f"eq.{email}", "select": "id", "limit": "1"},
+            )
+            person_rows = result if isinstance(result, list) else []
+
+        if person_rows:
+            person_id = UUID(person_rows[0]["id"])
+        else:
+            created = _request(
+                "POST",
+                "/rest/v1/agp_pessoas",
+                payload={
+                    "nome": str(member.get("nome") or email or auth_id).strip(),
+                    "email_contato": email,
+                    "status": "ativo",
+                    "criado_por": str(operator_id),
+                },
+            )
+            if not isinstance(created, list) or len(created) != 1:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Falha ao criar identidade canônica do profissional")
+            person_id = UUID(created[0]["id"])
+
+        account = _request(
+            "POST",
+            "/rest/v1/agp_contas_acesso",
+            payload={
+                "pessoa_id": str(person_id),
+                "auth_id": auth_id,
+                "email_acesso": email,
+                "status": "ativo",
+            },
+        )
+        if not isinstance(account, list) or len(account) != 1:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Falha ao vincular acesso canônico do profissional")
+
+    canonical_role = _canonical_role(str(member.get("papel") or "tecnico"))
+    role_rows = _request(
+        "GET",
+        "/rest/v1/agp_papeis_institucionais",
+        params={
+            "pessoa_id": f"eq.{person_id}",
+            "instituicao_id": f"eq.{institution_id}",
+            "papel": f"eq.{canonical_role}",
+            "select": "id",
+            "limit": "1",
+        },
+    )
+    if not isinstance(role_rows, list) or not role_rows:
+        created_role = _request(
+            "POST",
+            "/rest/v1/agp_papeis_institucionais",
+            payload={
+                "pessoa_id": str(person_id),
+                "instituicao_id": institution_id,
+                "papel": canonical_role,
+                "escopo": {"origem": "nucleo_administrativo", "membro_instituicao_id": member.get("id")},
+                "status": "ativo" if member.get("ativo") is not False else "suspenso",
+                "criado_por": str(operator_id),
+            },
+        )
+        if not isinstance(created_role, list) or len(created_role) != 1:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Falha ao criar papel institucional canônico")
+
+    return person_id
+
+
 @router.get("/equipe-tecnica/usuarios")
 def list_auth_users(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
     _require_owner(authorization)
@@ -83,9 +178,26 @@ def list_technical_team(authorization: str | None = Header(default=None)) -> lis
     return rows if isinstance(rows, list) else []
 
 
+@router.get("/equipe-tecnica/canonicos")
+def list_canonical_technical_team(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+    operator_id = _require_owner(authorization)
+    rows = _request("GET", "/rest/v1/agp_membros_instituicao", params={
+        "select": "*,instituicao:agp_instituicoes(id,nome,slug)",
+        "papel": "in.(admin_institucional,tecnico,assistente,observador)",
+        "ativo": "eq.true",
+        "order": "nome.asc"
+    })
+    members = rows if isinstance(rows, list) else []
+    result: list[dict[str, Any]] = []
+    for member in members:
+        person_id = _ensure_canonical_person(member, operator_id)
+        result.append({**member, "pessoa_id": str(person_id), "papel_canonico": _canonical_role(str(member.get("papel") or "tecnico"))})
+    return result
+
+
 @router.post("/equipe-tecnica", status_code=status.HTTP_201_CREATED)
 def create_technical_member(payload: TechnicalMemberCreate, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    _require_owner(authorization)
+    operator_id = _require_owner(authorization)
     _institution_exists(payload.instituicao_id)
     rows = _request("POST", "/rest/v1/agp_membros_instituicao", payload={
         "instituicao_id": str(payload.instituicao_id),
@@ -98,12 +210,14 @@ def create_technical_member(payload: TechnicalMemberCreate, authorization: str |
     })
     if not isinstance(rows, list) or len(rows) != 1:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Resposta inválida ao criar membro técnico")
-    return rows[0]
+    member = rows[0]
+    person_id = _ensure_canonical_person(member, operator_id)
+    return {**member, "pessoa_id": str(person_id)}
 
 
 @router.patch("/equipe-tecnica/{membro_id}")
 def update_technical_member(membro_id: UUID, payload: TechnicalMemberUpdate, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    _require_owner(authorization)
+    operator_id = _require_owner(authorization)
     changes = payload.dict(exclude_unset=True)
     if "instituicao_id" in changes and changes["instituicao_id"] is not None:
         _institution_exists(changes["instituicao_id"])
@@ -117,7 +231,9 @@ def update_technical_member(membro_id: UUID, payload: TechnicalMemberUpdate, aut
     rows = _request("PATCH", "/rest/v1/agp_membros_instituicao", params={"id": f"eq.{membro_id}"}, payload=changes)
     if not isinstance(rows, list) or len(rows) != 1:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membro técnico não encontrado")
-    return rows[0]
+    member = rows[0]
+    person_id = _ensure_canonical_person(member, operator_id)
+    return {**member, "pessoa_id": str(person_id)}
 
 
 @router.delete("/equipe-tecnica/{membro_id}", status_code=status.HTTP_204_NO_CONTENT)
