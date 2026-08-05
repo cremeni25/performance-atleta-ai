@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any, Literal
 from uuid import UUID
 
+import requests
 from fastapi import APIRouter, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.institution_management import _request, _require_owner
+from app.owner_activation import _admin_headers, _supabase_url
 
 router = APIRouter(prefix="/api/v1/administracao", tags=["administracao-equipe-tecnica"])
 
@@ -36,6 +38,38 @@ def _institution_exists(institution_id: UUID) -> None:
     rows = _request("GET", "/rest/v1/agp_instituicoes", params={"id": f"eq.{institution_id}", "select": "id", "limit": "1"})
     if not isinstance(rows, list) or not rows:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Instituição não encontrada")
+
+
+@router.get("/equipe-tecnica/usuarios")
+def list_auth_users(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+    _require_owner(authorization)
+    users: list[dict[str, Any]] = []
+    for page in range(1, 101):
+        response = requests.get(
+            f"{_supabase_url()}/auth/v1/admin/users",
+            headers=_admin_headers(),
+            params={"page": page, "per_page": 1000},
+            timeout=20,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível consultar os usuários autenticados do AGP")
+        payload = response.json()
+        page_users = payload.get("users", []) if isinstance(payload, dict) else []
+        for user in page_users:
+            metadata = user.get("user_metadata") or {}
+            email = str(user.get("email") or "").strip()
+            nome = str(metadata.get("nome") or metadata.get("name") or metadata.get("full_name") or email or user.get("id") or "").strip()
+            users.append({
+                "id": user.get("id"),
+                "auth_id": user.get("id"),
+                "nome": nome,
+                "email": email or None,
+                "tipo_usuario": metadata.get("tipo_usuario"),
+                "confirmado": bool(user.get("email_confirmed_at")),
+            })
+        if len(page_users) < 1000:
+            break
+    return sorted(users, key=lambda item: str(item.get("nome") or "").lower())
 
 
 @router.get("/equipe-tecnica")
