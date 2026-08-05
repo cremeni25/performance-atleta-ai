@@ -21,7 +21,7 @@ ALLOWED_DOMAINS = {"fisico", "fisiologico", "tecnico", "mental", "recuperacao", 
 
 class AnalyticExecutionInput(BaseModel):
     participante_id: UUID
-    coleta_ids: list[UUID] = Field(min_length=1)
+    coleta_ids: list[UUID] = Field(min_items=1)
     idade: int = Field(ge=5, le=100)
     nivel: str = Field(min_length=2, max_length=80)
     tipo: str = "score_global"
