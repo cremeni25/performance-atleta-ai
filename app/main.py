@@ -23,6 +23,7 @@ from app.protocol_catalog import router as protocol_catalog_router
 from app.collection_instances import router as collection_instances_router
 from app.analytic_pipeline import router as analytic_pipeline_router
 from app.professional_validation import router as professional_validation_router
+from app.institution_management import router as institution_management_router
 
 LOGGER = logging.getLogger("agp.startup")
 
@@ -36,6 +37,7 @@ app.include_router(protocol_catalog_router)
 app.include_router(collection_instances_router)
 app.include_router(analytic_pipeline_router)
 app.include_router(professional_validation_router)
+app.include_router(institution_management_router)
 
 app.add_middleware(
     CORSMiddleware,
