@@ -17,6 +17,7 @@ from app.agp_global_ai import gerar_ranking_global, calcular_indicadores_globais
 from app.owner_activation import ensure_owner_profile, router as owner_activation_router
 from app.participant_onboarding import router as participant_onboarding_router
 from app.consent_management import router as consent_management_router
+from app.baseline_management import router as baseline_management_router
 
 LOGGER = logging.getLogger("agp.startup")
 
@@ -24,6 +25,7 @@ app = FastAPI()
 app.include_router(owner_activation_router)
 app.include_router(participant_onboarding_router)
 app.include_router(consent_management_router)
+app.include_router(baseline_management_router)
 
 app.add_middleware(
     CORSMiddleware,
