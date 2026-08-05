@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/v1", tags=["professional-validation"])
 
 
 class ProfessionalValidationInput(BaseModel):
-    decisao: str = Field(pattern="^(aprovado|rejeitado|substituido)$")
+    decisao: str = Field(regex="^(aprovado|rejeitado|substituido)$")
     parecer_tecnico: str = Field(min_length=10, max_length=5000)
     papel_profissional: str = Field(min_length=2, max_length=80)
     visivel_atleta: bool = False
