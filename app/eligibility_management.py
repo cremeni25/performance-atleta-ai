@@ -4,7 +4,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Body, Header, HTTPException, status
 
 from app.participant_onboarding import _request, _require_owner, _single_row
 
@@ -35,7 +35,6 @@ def _ensure_legacy_profile(person_id: str) -> str | None:
     )
     if not profiles:
         return None
-
     profile = profiles[0]
     if profile.get("legacy_perfil_atleta_id"):
         return profile["legacy_perfil_atleta_id"]
@@ -133,6 +132,45 @@ def _reconcile_project(project_id: UUID, operator_id: UUID) -> None:
         technician_id = participant.get("tecnico_responsavel_pessoa_id")
         if technician_id:
             _ensure_project_technician(project_id, technician_id, operator_id)
+
+
+@router.patch("/participantes/{participante_id}/tecnico-responsavel")
+def assign_responsible_technician(
+    participante_id: UUID,
+    payload: dict[str, str] = Body(...),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    operator_id = _require_owner(authorization)
+    technician_id = payload.get("tecnico_responsavel_pessoa_id")
+    if not technician_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Técnico responsável não informado")
+
+    rows = _request(
+        "GET",
+        "/rest/v1/agp_participantes_projeto",
+        params={"id": f"eq.{participante_id}", "select": "id,projeto_id,funcao_no_projeto", "limit": "1"},
+    )
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Participante não encontrado")
+    participant = rows[0]
+    if participant.get("funcao_no_projeto") != "atleta":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Vínculo de técnico exige participante atleta")
+
+    project_id = UUID(participant["projeto_id"])
+    _ensure_project_technician(project_id, technician_id, operator_id)
+    _request(
+        "PATCH",
+        "/rest/v1/agp_participantes_projeto",
+        params={"id": f"eq.{participante_id}"},
+        payload={"tecnico_responsavel_pessoa_id": technician_id},
+    )
+    _reconcile_project(project_id, operator_id)
+    result = _request(
+        "POST",
+        "/rest/v1/rpc/agp_elegibilidade_operacional",
+        payload={"p_participante_id": str(participante_id)},
+    )
+    return result if isinstance(result, dict) else {"participante_id": str(participante_id), "tecnico_responsavel_pessoa_id": technician_id}
 
 
 @router.get("/projetos/{projeto_id}/elegibilidade")
