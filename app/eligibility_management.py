@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -140,6 +140,22 @@ def _single_institution_technician(project_id: UUID, operator_id: UUID) -> str |
     return str(_ensure_canonical_person(members[0], operator_id))
 
 
+def _refresh_onboarding_status(participant_id: str) -> str:
+    calculated = _request(
+        "POST",
+        "/rest/v1/rpc/agp_status_onboarding_participante",
+        payload={"p_participante_id": participant_id},
+    )
+    value = calculated if isinstance(calculated, str) else "perfil_pendente"
+    _request(
+        "PATCH",
+        "/rest/v1/agp_participantes_projeto",
+        params={"id": f"eq.{participant_id}"},
+        payload={"status_onboarding": value, "updated_at": datetime.now(timezone.utc).isoformat()},
+    )
+    return value
+
+
 def _reconcile_project(project_id: UUID, operator_id: UUID) -> None:
     participants = _request(
         "GET",
@@ -169,6 +185,7 @@ def _reconcile_project(project_id: UUID, operator_id: UUID) -> None:
                 )
         if technician_id:
             _ensure_project_technician(project_id, technician_id, operator_id)
+        _refresh_onboarding_status(str(participant["id"]))
 
 
 @router.patch("/participantes/{participante_id}/tecnico-responsavel")
