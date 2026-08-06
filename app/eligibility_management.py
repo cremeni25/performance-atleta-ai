@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Header, HTTPException, status
 
 from app.participant_onboarding import _request, _require_owner, _single_row
+from app.technical_team_management import _ensure_canonical_person
 
 router = APIRouter(prefix="/api/v1", tags=["eligibility-management"])
 
@@ -115,6 +116,30 @@ def _ensure_project_technician(project_id: UUID, technician_person_id: str, oper
     )
 
 
+def _single_institution_technician(project_id: UUID, operator_id: UUID) -> str | None:
+    projects = _request(
+        "GET",
+        "/rest/v1/agp_projetos_validacao",
+        params={"id": f"eq.{project_id}", "select": "instituicao_id", "limit": "1"},
+    )
+    if not projects:
+        return None
+    institution_id = projects[0]["instituicao_id"]
+    members = _request(
+        "GET",
+        "/rest/v1/agp_membros_instituicao",
+        params={
+            "instituicao_id": f"eq.{institution_id}",
+            "ativo": "eq.true",
+            "papel": "in.(admin_institucional,tecnico)",
+            "select": "*",
+        },
+    )
+    if not isinstance(members, list) or len(members) != 1:
+        return None
+    return str(_ensure_canonical_person(members[0], operator_id))
+
+
 def _reconcile_project(project_id: UUID, operator_id: UUID) -> None:
     participants = _request(
         "GET",
@@ -125,11 +150,23 @@ def _reconcile_project(project_id: UUID, operator_id: UUID) -> None:
             "select": "id,pessoa_id,funcao_no_projeto,tecnico_responsavel_pessoa_id",
         },
     )
+    unique_technician_id: str | None = None
     for participant in participants or []:
         if participant.get("funcao_no_projeto") != "atleta":
             continue
         _ensure_legacy_profile(participant["pessoa_id"])
         technician_id = participant.get("tecnico_responsavel_pessoa_id")
+        if not technician_id:
+            if unique_technician_id is None:
+                unique_technician_id = _single_institution_technician(project_id, operator_id)
+            technician_id = unique_technician_id
+            if technician_id:
+                _request(
+                    "PATCH",
+                    "/rest/v1/agp_participantes_projeto",
+                    params={"id": f"eq.{participant['id']}"},
+                    payload={"tecnico_responsavel_pessoa_id": technician_id},
+                )
         if technician_id:
             _ensure_project_technician(project_id, technician_id, operator_id)
 
