@@ -29,6 +29,7 @@ from app.technical_team_management import router as technical_team_management_ro
 from app.athlete_technician_management import router as athlete_technician_management_router
 from app.athlete_intelligence import router as athlete_intelligence_router
 from app.individual_intelligence_v3 import router as individual_intelligence_v3_router
+from app.individual_intelligence_v4 import router as individual_intelligence_v4_router
 
 LOGGER = logging.getLogger("agp.startup")
 
@@ -48,6 +49,7 @@ app.include_router(technical_team_management_router)
 app.include_router(athlete_technician_management_router)
 app.include_router(athlete_intelligence_router)
 app.include_router(individual_intelligence_v3_router)
+app.include_router(individual_intelligence_v4_router)
 
 app.add_middleware(
     CORSMiddleware,
