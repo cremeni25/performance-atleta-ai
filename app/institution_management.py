@@ -22,6 +22,10 @@ class InstitutionCreate(BaseModel):
     tipo: InstitutionType = "instituto"
     localidade: str | None = Field(default=None, max_length=200)
     status: InstitutionStatus = "ativo"
+    nome_exibicao: str | None = Field(default=None, max_length=200)
+    logo_url: str | None = None
+    cor_primaria: str | None = Field(default=None, max_length=20)
+    cor_secundaria: str | None = Field(default=None, max_length=20)
 
 
 class InstitutionUpdate(BaseModel):
@@ -30,6 +34,10 @@ class InstitutionUpdate(BaseModel):
     tipo: InstitutionType | None = None
     localidade: str | None = Field(default=None, max_length=200)
     status: InstitutionStatus | None = None
+    nome_exibicao: str | None = Field(default=None, max_length=200)
+    logo_url: str | None = None
+    cor_primaria: str | None = Field(default=None, max_length=20)
+    cor_secundaria: str | None = Field(default=None, max_length=20)
 
 
 def _request(method: str, path: str, *, payload: Any | None = None, params: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> Any:
@@ -62,6 +70,13 @@ def _slugify(value: str) -> str:
     return normalized.strip("-")
 
 
+def _normalize_branding(payload: dict[str, Any]) -> dict[str, Any]:
+    for field in ("nome_exibicao", "logo_url", "cor_primaria", "cor_secundaria"):
+        if field in payload and isinstance(payload[field], str):
+            payload[field] = payload[field].strip() or None
+    return payload
+
+
 @router.get("/instituicoes")
 def list_institutions(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
     _require_owner(authorization)
@@ -75,7 +90,19 @@ def create_institution(payload: InstitutionCreate, authorization: str | None = H
     slug = _slugify(payload.slug or payload.nome)
     if not slug:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Slug inválido")
-    rows = _request("POST", "/rest/v1/agp_instituicoes", payload={"nome": payload.nome.strip(), "slug": slug, "tipo": payload.tipo, "localidade": payload.localidade or None, "status": payload.status, "criado_por": str(operator_id)})
+    body = _normalize_branding({
+        "nome": payload.nome.strip(),
+        "slug": slug,
+        "tipo": payload.tipo,
+        "localidade": payload.localidade or None,
+        "status": payload.status,
+        "nome_exibicao": payload.nome_exibicao,
+        "logo_url": payload.logo_url,
+        "cor_primaria": payload.cor_primaria,
+        "cor_secundaria": payload.cor_secundaria,
+        "criado_por": str(operator_id),
+    })
+    rows = _request("POST", "/rest/v1/agp_instituicoes", payload=body)
     if not isinstance(rows, list) or len(rows) != 1:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Resposta inválida ao criar instituição")
     return rows[0]
@@ -89,6 +116,7 @@ def update_institution(instituicao_id: UUID, payload: InstitutionUpdate, authori
         changes["nome"] = changes["nome"].strip()
     if "slug" in changes and changes["slug"] is not None:
         changes["slug"] = _slugify(changes["slug"])
+    changes = _normalize_branding(changes)
     if not changes:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhuma alteração informada")
     rows = _request("PATCH", "/rest/v1/agp_instituicoes", params={"id": f"eq.{instituicao_id}"}, payload=changes)
