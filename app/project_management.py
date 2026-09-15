@@ -5,7 +5,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.institution_management import _request, _require_owner
 
@@ -51,6 +51,39 @@ def _ensure_institution(instituicao_id: UUID) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Instituição não encontrada")
 
 
+def _project_create_from_raw(raw: dict[str, Any]) -> ProjectCreate:
+    allowed = {
+        "instituicao_id",
+        "nome",
+        "objetivo",
+        "metodologia",
+        "diretrizes",
+        "localidade",
+        "data_inicio",
+        "data_fim",
+        "status",
+        "versao_motor",
+    }
+    clean = {key: raw.get(key) for key in allowed if key in raw}
+    for field in ("metodologia", "diretrizes", "localidade", "data_inicio", "data_fim"):
+        if clean.get(field) == "":
+            clean[field] = None
+    for field in ("nome", "objetivo", "metodologia", "diretrizes", "localidade", "versao_motor"):
+        if isinstance(clean.get(field), str):
+            clean[field] = clean[field].strip()
+    try:
+        return ProjectCreate(**clean)
+    except ValidationError as exc:
+        messages: list[str] = []
+        for item in exc.errors():
+            loc = ".".join(str(part) for part in item.get("loc", [])) or "campo"
+            messages.append(f"{loc}: {item.get('msg', 'valor inválido')}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=" | ".join(messages) or "Dados do projeto inválidos",
+        ) from exc
+
+
 @router.get("/projetos")
 def list_projects(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
     _require_owner(authorization)
@@ -63,16 +96,17 @@ def list_projects(authorization: str | None = Header(default=None)) -> list[dict
 
 
 @router.post("/projetos", status_code=status.HTTP_201_CREATED)
-def create_project(payload: ProjectCreate, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+def create_project(payload: dict[str, Any], authorization: str | None = Header(default=None)) -> dict[str, Any]:
     _require_owner(authorization)
-    _ensure_institution(payload.instituicao_id)
-    _validate_dates(payload.data_inicio, payload.data_fim)
-    data = payload.dict()
-    data["instituicao_id"] = str(payload.instituicao_id)
-    data["data_inicio"] = payload.data_inicio.isoformat() if payload.data_inicio else None
-    data["data_fim"] = payload.data_fim.isoformat() if payload.data_fim else None
-    data["nome"] = payload.nome.strip()
-    data["objetivo"] = payload.objetivo.strip()
+    project = _project_create_from_raw(payload)
+    _ensure_institution(project.instituicao_id)
+    _validate_dates(project.data_inicio, project.data_fim)
+    data = project.dict()
+    data["instituicao_id"] = str(project.instituicao_id)
+    data["data_inicio"] = project.data_inicio.isoformat() if project.data_inicio else None
+    data["data_fim"] = project.data_fim.isoformat() if project.data_fim else None
+    data["nome"] = project.nome.strip()
+    data["objetivo"] = project.objetivo.strip()
     rows = _request("POST", "/rest/v1/agp_projetos_validacao", payload=data)
     if not isinstance(rows, list) or len(rows) != 1:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Resposta inválida ao criar projeto")
