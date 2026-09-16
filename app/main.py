@@ -32,6 +32,7 @@ from app.athlete_intelligence import router as athlete_intelligence_router
 from app.individual_intelligence_v4 import router as individual_intelligence_v4_router
 from app.multidisciplinary_decision import router as multidisciplinary_decision_router
 from app.identity_context import router as identity_context_router
+from app.canonical_longitudinal_intelligence import router as canonical_longitudinal_intelligence_router
 
 LOGGER = logging.getLogger("agp.startup")
 
@@ -54,6 +55,7 @@ app.include_router(athlete_intelligence_router)
 app.include_router(individual_intelligence_v4_router)
 app.include_router(multidisciplinary_decision_router)
 app.include_router(identity_context_router)
+app.include_router(canonical_longitudinal_intelligence_router)
 
 app.add_middleware(
     CORSMiddleware,
