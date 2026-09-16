@@ -22,10 +22,84 @@ class BaselineInput(BaseModel):
     altura_cm: float = Field(gt=30, le=260)
     massa_kg: float = Field(gt=5, le=400)
     envergadura_cm: float | None = Field(default=None, gt=30, le=300)
+    altura_sentado_cm: float | None = Field(default=None, gt=30, le=220)
     data_referencia: date
     origem: str = Field(min_length=2, max_length=120)
     observacoes: str | None = Field(default=None, max_length=2000)
     validar: bool = False
+
+
+def _estimate_maturation(payload: BaselineInput) -> dict[str, Any]:
+    if payload.altura_sentado_cm is None:
+        return {
+            "estagio_maturacional": None,
+            "metodo_maturacional": None,
+            "offset_maturacional_anos": None,
+            "idade_pico_velocidade_anos": None,
+            "classificacao_maturacional": None,
+            "maturacao_observacoes": "Não estimado: altura sentada não informada.",
+        }
+
+    sitting = float(payload.altura_sentado_cm)
+    standing = float(payload.altura_cm)
+    if sitting >= standing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Altura sentada deve ser menor que a altura em pé.",
+        )
+
+    age = float(payload.idade_cronologica)
+    mass = float(payload.massa_kg)
+    leg = standing - sitting
+    sex = payload.sexo_registrado.strip().lower()
+
+    if sex == "masculino":
+        offset = (
+            -9.236
+            + 0.0002708 * (leg * sitting)
+            - 0.001663 * (age * leg)
+            + 0.007216 * (age * sitting)
+            + 0.02292 * ((mass / standing) * 100)
+        )
+    elif sex == "feminino":
+        offset = (
+            -9.376
+            + 0.0001882 * (leg * sitting)
+            + 0.0022 * (age * leg)
+            + 0.005841 * (age * sitting)
+            - 0.002658 * (age * mass)
+            + 0.07693 * ((mass / standing) * 100)
+        )
+    else:
+        return {
+            "estagio_maturacional": None,
+            "metodo_maturacional": None,
+            "offset_maturacional_anos": None,
+            "idade_pico_velocidade_anos": None,
+            "classificacao_maturacional": None,
+            "maturacao_observacoes": "Não estimado: o método antropométrico disponível usa equações específicas por sexo.",
+        }
+
+    aphv = age - offset
+    if offset < -1:
+        classification = "pré-PHV"
+    elif offset <= 1:
+        classification = "circa-PHV"
+    else:
+        classification = "pós-PHV"
+
+    return {
+        "estagio_maturacional": classification,
+        "metodo_maturacional": "Mirwald 2002 - maturity offset antropométrico",
+        "offset_maturacional_anos": round(offset, 3),
+        "idade_pico_velocidade_anos": round(aphv, 3),
+        "classificacao_maturacional": classification,
+        "maturacao_observacoes": (
+            "Estimativa não invasiva baseada em idade cronológica, estatura, altura sentada, "
+            "comprimento estimado das pernas e massa corporal. Deve ser interpretada como estimativa, "
+            "não como determinação clínica; precisão é menor em maturadores precoces ou tardios."
+        ),
+    }
 
 
 def _participant_context(participante_id: UUID) -> dict[str, Any]:
@@ -86,6 +160,7 @@ def upsert_baseline(
 ) -> dict[str, Any]:
     operator_id = _require_owner(authorization)
     context = _participant_context(participante_id)
+    maturation = _estimate_maturation(payload)
 
     _request(
         "PATCH",
@@ -111,10 +186,16 @@ def upsert_baseline(
                 "sexo_registrado": payload.sexo_registrado,
                 "modalidade": payload.modalidade,
                 "prova_posicao": payload.prova_posicao,
-                "estagio_maturacional": payload.estagio_maturacional,
+                "estagio_maturacional": maturation["estagio_maturacional"],
                 "altura_cm": payload.altura_cm,
                 "massa_kg": payload.massa_kg,
                 "envergadura_cm": payload.envergadura_cm,
+                "altura_sentado_cm": payload.altura_sentado_cm,
+                "metodo_maturacional": maturation["metodo_maturacional"],
+                "offset_maturacional_anos": maturation["offset_maturacional_anos"],
+                "idade_pico_velocidade_anos": maturation["idade_pico_velocidade_anos"],
+                "classificacao_maturacional": maturation["classificacao_maturacional"],
+                "maturacao_observacoes": maturation["maturacao_observacoes"],
                 "data_referencia": payload.data_referencia.isoformat(),
                 "origem": payload.origem,
                 "responsavel_auth_id": str(operator_id),
@@ -140,6 +221,9 @@ def upsert_baseline(
                 "status": row.get("status"),
                 "completude": row.get("completude"),
                 "status_onboarding": onboarding_status,
+                "metodo_maturacional": maturation["metodo_maturacional"],
+                "classificacao_maturacional": maturation["classificacao_maturacional"],
+                "offset_maturacional_anos": maturation["offset_maturacional_anos"],
             },
             "executado_por": str(operator_id),
             "origem": "api_baseline_v1",
@@ -151,4 +235,5 @@ def upsert_baseline(
         "status": row.get("status"),
         "completude": row.get("completude"),
         "status_onboarding": onboarding_status,
+        **maturation,
     }
