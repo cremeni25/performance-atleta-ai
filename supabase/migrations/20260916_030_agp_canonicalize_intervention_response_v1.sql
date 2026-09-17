@@ -20,11 +20,25 @@ alter table public.agp_respostas_intervencao add column if not exists significad
 alter table public.agp_respostas_intervencao alter column atleta_id drop not null;
 
 update public.agp_intervencoes i
-set pessoa_id = pe.pessoa_id,
-    participante_id = coalesce(i.participante_id, pp.id)
-from public.agp_perfis_esportivos pe
-left join public.agp_participantes_projeto pp on pp.pessoa_id=pe.pessoa_id and (i.projeto_id is null or pp.projeto_id=i.projeto_id) and pp.ativo=true
-where i.pessoa_id is null and i.atleta_id is not null and pe.legacy_perfil_atleta_id=i.atleta_id;
+set pessoa_id = (
+      select pe.pessoa_id
+      from public.agp_perfis_esportivos pe
+      where pe.legacy_perfil_atleta_id=i.atleta_id and pe.status='ativo'
+      limit 1
+    )
+where i.pessoa_id is null and i.atleta_id is not null;
+
+update public.agp_intervencoes i
+set participante_id = (
+      select pp.id
+      from public.agp_participantes_projeto pp
+      where pp.pessoa_id=i.pessoa_id
+        and (i.projeto_id is null or pp.projeto_id=i.projeto_id)
+        and pp.ativo=true
+      order by pp.data_inicio desc nulls last
+      limit 1
+    )
+where i.participante_id is null and i.pessoa_id is not null;
 
 update public.agp_respostas_intervencao r
 set pessoa_id = pp.pessoa_id
