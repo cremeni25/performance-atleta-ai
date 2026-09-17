@@ -13,6 +13,14 @@ from app.canonical_longitudinal_intelligence import _actor_person, _target_parti
 
 router = APIRouter(prefix="/api/v1", tags=["canonical-professional-assessment"])
 
+REGULATED_COMPETENCES = {
+    "medicine.clinical",
+    "nutrition.sport",
+    "physiology.exercise",
+    "physiotherapy.msk_rehab",
+    "psychology.sport",
+}
+
 DOMAIN_RULES: dict[str, dict[str, set[str]]] = {
     "fisico": {"competencias": {"strength_conditioning"}, "capacidades": {"assessment.physical"}},
     "fisiologico": {"competencias": {"physiology.exercise"}, "capacidades": {"assessment.physiology"}},
@@ -69,7 +77,7 @@ def _authorize_professional(actor_pessoa_id: str, participant: dict[str, Any], d
             code = competence.get("codigo")
             if code not in rule["competencias"]:
                 continue
-            requires_credential = bool(competence.get("requer_credencial_regulada"))
+            requires_credential = code in REGULATED_COMPETENCES or bool(competence.get("requer_credencial_regulada"))
             verified = bool(competence.get("credencial_verificada"))
             if requires_credential and not verified:
                 continue
