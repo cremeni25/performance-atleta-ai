@@ -37,6 +37,7 @@ from app.canonical_decision_cycle import router as canonical_decision_cycle_rout
 from app.canonical_training_competition import router as canonical_training_competition_router
 from app.canonical_self_report import router as canonical_self_report_router
 from app.canonical_professional_assessment import router as canonical_professional_assessment_router
+from app.canonical_professional_validation import router as canonical_professional_validation_router
 
 app = FastAPI()
 app.include_router(owner_activation_router)
@@ -64,6 +65,7 @@ app.include_router(canonical_decision_cycle_router)
 app.include_router(canonical_training_competition_router)
 app.include_router(canonical_self_report_router)
 app.include_router(canonical_professional_assessment_router)
+app.include_router(canonical_professional_validation_router)
 
 app.add_middleware(
     CORSMiddleware,
