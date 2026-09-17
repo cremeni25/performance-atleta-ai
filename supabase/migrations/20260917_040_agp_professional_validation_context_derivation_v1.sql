@@ -10,7 +10,9 @@ comment on column public.agp_validacoes_profissionais.escopo_derivado is
 comment on column public.agp_validacoes_profissionais.contexto_derivado is
   'Snapshot de contexto resolvido automaticamente pelo AGP (pessoa, participante, projeto e domínios do resultado). Mantido para auditoria sem criar fricção operacional.';
 
-create or replace view public.agp_validacoes_profissionais_canonicas
+drop view if exists public.agp_validacoes_profissionais_canonicas;
+
+create view public.agp_validacoes_profissionais_canonicas
 with (security_invoker = true)
 as
 select
