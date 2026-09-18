@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 from uuid import UUID
 
@@ -54,9 +55,11 @@ def invite_participant_access(
     if not email:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Conta sem e-mail de acesso")
 
+    frontend_url = os.getenv("AGP_FRONTEND_URL", "https://agp-frontend-vite.onrender.com/").rstrip("/") + "/"
     invited = _request(
         "POST",
         "/auth/v1/invite",
+        params={"redirect_to": frontend_url},
         payload={
             "email": email,
             "data": {
