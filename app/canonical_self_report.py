@@ -15,6 +15,17 @@ router = APIRouter(prefix="/api/v1", tags=["canonical-self-report"])
 
 READINESS_CODE = "AGP-READINESS-DAILY-Q"
 
+READINESS_METRICS = {
+    "sono_horas": ("AGP_READINESS_SLEEP_HOURS", "h"),
+    "qualidade_sono": ("AGP_READINESS_SLEEP_QUALITY", "1-5"),
+    "fadiga": ("AGP_READINESS_FATIGUE", "1-5"),
+    "dor": ("AGP_READINESS_PAIN", "0-10"),
+    "estresse": ("AGP_READINESS_STRESS", "1-5"),
+    "humor": ("AGP_READINESS_MOOD", "1-5"),
+    "rpe_ultima_sessao": ("AGP_READINESS_LAST_SESSION_RPE", "0-10"),
+}
+
+
 
 def _rows(value: Any) -> list[dict[str, Any]]:
     return value if isinstance(value, list) else []
@@ -149,8 +160,51 @@ def submit_daily_self_report(
     created = _first(_request("POST", "/rest/v1/agp_coletas", payload=row))
     if not created:
         raise HTTPException(status_code=502, detail="Falha ao registrar autorreporte diário")
+
+    metric_codes = [code for code, _unit in READINESS_METRICS.values()]
+    metrics = _rows(_request("GET", "/rest/v1/agp_metricas_esportivas_canonicas", params={
+        "codigo": f"in.({','.join(metric_codes)})",
+        "ativo": "eq.true",
+        "select": "id,codigo",
+    }))
+    metric_map = {item.get("codigo"): item.get("id") for item in metrics if item.get("codigo") and item.get("id")}
+
+    for order, (field, (code, unit)) in enumerate(READINESS_METRICS.items()):
+        metric_id = metric_map.get(code)
+        value = data.get(field)
+        if not metric_id or value is None:
+            continue
+        _request("POST", "/rest/v1/agp_coleta_metricas", payload={
+            "coleta_id": created["id"],
+            "metrica_id": metric_id,
+            "ordem": order,
+            "valor_numerico": value,
+            "unidade": unit,
+            "contexto_medicao": {
+                "origem": "athlete_self_report",
+                "instrumento_codigo": READINESS_CODE,
+                "versao_instrumento": instrument.get("versao"),
+                "versao_schema": "1.0.0",
+                "campo": field,
+                "scale_version": "1.0.0",
+            },
+            "qualidade": {
+                "natureza": "autodeclarado",
+                "validacao": "autoria_estrutura",
+                "diagnostico": False,
+            },
+            "measured_at": now,
+        })
+
+    if payload.ciclo_id:
+        _request("POST", "/rest/v1/agp_ciclo_coletas", payload={
+            "ciclo_id": str(payload.ciclo_id),
+            "coleta_id": created["id"],
+        })
+
     return {
         "coleta": created,
+        "metricas_materializadas": [field for field in READINESS_METRICS if data.get(field) is not None],
         "significado": "relato_autodeclarado_do_atleta",
         "nao_significa": ["diagnostico", "causalidade", "decisao_clinica_automatica"],
     }
