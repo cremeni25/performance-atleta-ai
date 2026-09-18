@@ -12,6 +12,20 @@ from app.supabase_client import HEADERS, SUPABASE_KEY, SUPABASE_URL
 
 router = APIRouter(prefix="/api/v1", tags=["participant-onboarding"])
 
+CANONICAL_ROLE_CODE = {
+    "atleta": "athlete",
+    "tecnico": "head_coach",
+    "treinador": "head_coach",
+    "preparador_fisico": "strength_conditioning_coach",
+    "medico": "physician",
+    "fisioterapeuta": "physiotherapist",
+    "psicologo": "psychologist",
+    "nutricionista": "nutritionist",
+    "gestor": "institution_manager",
+    "analista": "performance_analyst",
+    "responsavel_legal": "guardian",
+}
+
 Role = Literal[
     "atleta",
     "tecnico",
@@ -222,6 +236,7 @@ def create_participant(
                     "pessoa_id": str(person_id),
                     "instituicao_id": str(instituicao_id),
                     "papel": payload.papel,
+                    "papel_codigo": CANONICAL_ROLE_CODE.get(payload.papel),
                     "escopo": payload.escopo,
                     "status": "ativo",
                     "criado_por": str(operator_id),
@@ -290,6 +305,7 @@ def create_participant(
                         "projeto_id": str(payload.projeto_id),
                         "pessoa_id": str(person_id),
                         "funcao_no_projeto": payload.papel,
+                        "funcao_canonica_codigo": CANONICAL_ROLE_CODE.get(payload.papel),
                         "tecnico_responsavel_pessoa_id": str(payload.tecnico_responsavel_pessoa_id) if payload.tecnico_responsavel_pessoa_id else None,
                         "status_onboarding": onboarding_status,
                         "ativo": True,
