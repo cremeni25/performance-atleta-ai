@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
@@ -35,6 +35,9 @@ class SportProfileInput(BaseModel):
     nivel: str | None = Field(default=None, max_length=120)
     equipe: str | None = Field(default=None, max_length=160)
     data_ingresso: date | None = None
+    status_federativo: Literal["nao_informado", "vinculado", "federado"] = "nao_informado"
+    federacao_nome: str | None = Field(default=None, max_length=200)
+    registro_federativo: str | None = Field(default=None, max_length=160)
     legacy_perfil_atleta_id: UUID | None = None
     dados_complementares: dict[str, Any] = Field(default_factory=dict)
 
@@ -264,6 +267,10 @@ def create_participant(
                         "nivel": profile.nivel,
                         "equipe": profile.equipe,
                         "data_ingresso": profile.data_ingresso.isoformat() if profile.data_ingresso else None,
+                        "status_federativo": profile.status_federativo,
+                        "federacao_nome": profile.federacao_nome,
+                        "registro_federativo": profile.registro_federativo,
+                        "status_federativo_atualizado_em": datetime.now(timezone.utc).isoformat(),
                         "status": "ativo",
                         "dados_complementares": profile.dados_complementares,
                     },
