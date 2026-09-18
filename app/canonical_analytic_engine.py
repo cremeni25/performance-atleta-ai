@@ -66,7 +66,7 @@ def _maturation_context(baselines: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _series_for_person(pessoa_id: str) -> list[dict[str, Any]]:
-    return _rows(_request("GET", "/rest/v1/agp_series_longitudinais_metricas", params={
+    return _rows(_request("GET", "/rest/v1/agp_series_longitudinais_metricas_v2", params={
         "pessoa_id": f"eq.{pessoa_id}",
         "select": (
             "metrica_id,metrica_codigo,nome_canonico,dominio,amostras,primeira_medicao_em,"
