@@ -68,50 +68,43 @@ def _readiness(collections: list[dict[str, Any]]) -> dict[str, Any]:
     valid = [c for c in collections if c.get("status") == "validada" and isinstance(c.get("dados"), dict)]
     valid.sort(key=lambda c: str(c.get("data_hora_coleta") or c.get("created_at") or ""))
     if not valid:
-        return {"status": "sem_evidencia", "amostras": 0, "ultimo": None, "sinais": []}
+        return {"status": "sem_evidencia", "amostras": 0, "ultimo": None, "baseline": {}, "mudancas_nominais": []}
 
     latest = valid[-1]
     data = latest.get("dados") or {}
-    signals: list[dict[str, str]] = []
-    sleep = _num(data.get("sono_horas"))
-    fatigue = _num(data.get("fadiga"))
-    pain = _num(data.get("dor"))
-    stress = _num(data.get("estresse"))
-    mood = _num(data.get("humor"))
-    rpe = _num(data.get("rpe_ultima_sessao"))
-
-    if pain is not None and pain >= 7:
-        signals.append({"nivel": "alto", "dominio": "dor", "mensagem": "Dor autorreferida elevada; requer revisão profissional antes de intensificar carga."})
-    elif pain is not None and pain >= 4:
-        signals.append({"nivel": "atencao", "dominio": "dor", "mensagem": "Dor acima da faixa baixa; acompanhar evolução e contexto."})
-    if sleep is not None and sleep < 6:
-        signals.append({"nivel": "atencao", "dominio": "recuperacao", "mensagem": "Sono abaixo de 6 horas no registro mais recente."})
-    if fatigue is not None and fatigue >= 4:
-        signals.append({"nivel": "atencao", "dominio": "recuperacao", "mensagem": "Fadiga percebida elevada."})
-    if stress is not None and stress >= 4:
-        signals.append({"nivel": "atencao", "dominio": "contextual", "mensagem": "Estresse percebido elevado."})
-    if mood is not None and mood <= 2:
-        signals.append({"nivel": "atencao", "dominio": "mental", "mensagem": "Humor autorreferido baixo; interpretar em conjunto com contexto e equipe."})
-    if rpe is not None and fatigue is not None and rpe >= 8 and fatigue >= 4:
-        signals.append({"nivel": "atencao", "dominio": "carga_recuperacao", "mensagem": "Esforço alto coexistindo com fadiga elevada."})
-
     fields = ["sono_horas", "qualidade_sono", "fadiga", "dor", "estresse", "humor", "rpe_ultima_sessao"]
     baseline: dict[str, Any] = {}
+    nominal_changes: list[dict[str, Any]] = []
+
     for field in fields:
-        values = [_num(c.get("dados", {}).get(field)) for c in valid[-7:]]
-        values = [v for v in values if v is not None]
+        prior_values = [_num(item.get("dados", {}).get(field)) for item in valid[-8:-1]]
+        prior_values = [value for value in prior_values if value is not None]
+        latest_value = _num(data.get(field))
+        personal_mean = round(mean(prior_values), 2) if prior_values else None
+        delta = round(latest_value - personal_mean, 2) if latest_value is not None and personal_mean is not None else None
         baseline[field] = {
-            "media_pessoal": round(mean(values), 2) if values else None,
-            "ultimo": _num(data.get(field)),
-            "amostras": len(values),
+            "media_pessoal_anterior": personal_mean,
+            "ultimo": latest_value,
+            "amostras_anteriores": len(prior_values),
+            "delta_nominal": delta,
         }
+        if delta is not None:
+            nominal_changes.append({
+                "campo": field,
+                "ultimo": latest_value,
+                "media_pessoal_anterior": personal_mean,
+                "delta_nominal": delta,
+                "significado": "mudanca_nominal_sem_julgamento_automatico",
+            })
 
     return {
-        "status": "baseline_em_formacao" if len(valid) < 3 else "longitudinal",
+        "status": "baseline_em_formacao" if len(valid) < 3 else "evidencia_contextual_disponivel",
         "amostras": len(valid),
         "ultimo": latest,
         "baseline": baseline,
-        "sinais": signals,
+        "mudancas_nominais": nominal_changes,
+        "sinais": [],
+        "principio": "sem_limites_universais_nao_validados; interpretar_com_contexto_e_competencia_profissional",
     }
 
 
@@ -120,21 +113,24 @@ def _coverage(collections: list[dict[str, Any]], sessions: list[dict[str, Any]],
     days = {str(c.get("data_hora_coleta") or "")[:10] for c in valid if c.get("data_hora_coleta")}
     completeness = mean([float(c.get("completude") or 0) for c in valid]) if valid else 0.0
     reliability_values = [float(c.get("confiabilidade")) for c in valid if c.get("confiabilidade") is not None]
-    reliability = mean(reliability_values) if reliability_values else (100.0 if valid and completeness >= 100 else 0.0)
+    reliability = mean(reliability_values) if reliability_values else None
     coverage = min(100.0, len(days) * 100.0 / 14.0)
     validated_result = any(r.get("status") == "validado" for r in results)
-    confidence = min(100.0, 0.45 * coverage + 0.30 * completeness + 0.15 * reliability + (5 if sessions else 0) + (5 if validated_result else 0))
-    label = "alta" if confidence >= 75 else "moderada" if confidence >= 45 else "baixa"
     return {
         "janela_dias": 14,
         "dias_com_evidencia_validada": len(days),
         "cobertura_percentual": round(coverage, 1),
         "completude_media": round(completeness, 1),
-        "confiabilidade_media": round(reliability, 1),
+        "confiabilidade_media_documentada": round(reliability, 1) if reliability is not None else None,
         "sessoes_treino_disponiveis": len(sessions),
         "resultado_profissional_validado": validated_result,
-        "confianca_geral": round(confidence, 1),
-        "classificacao_confianca": label,
+        "estado_cobertura": (
+            "sem_evidencia" if not valid
+            else "inicial" if len(days) < 3
+            else "em_formacao" if len(days) < 7
+            else "continua"
+        ),
+        "nota": "Cobertura operacional; não é score de performance, risco ou prontidão.",
     }
 
 
@@ -142,38 +138,19 @@ def _return(readiness: dict[str, Any], coverage: dict[str, Any]) -> dict[str, An
     if readiness["amostras"] == 0:
         return {
             "estado": "aguardando_evidencia",
-            "mensagem": "Ainda não há evidência validada suficiente para interpretar o estado individual do atleta.",
-            "acao_prioritaria": "Realizar e validar a primeira coleta de prontidão diária.",
+            "mensagem": "Ainda não há evidência suficiente para uma leitura longitudinal individual.",
+            "acao_prioritaria": "Realizar a primeira coleta de prontidão e registrar a execução das sessões.",
         }
     if readiness["amostras"] < 3:
         return {
             "estado": "baseline_em_formacao",
-            "mensagem": "A referência pessoal começou a ser formada, mas ainda não há amostra suficiente para tendência.",
-            "acao_prioritaria": "Manter coletas consistentes até alcançar pelo menos três registros válidos.",
-        }
-    high = [s for s in readiness["sinais"] if s.get("nivel") == "alto"]
-    if high:
-        return {
-            "estado": "revisao_profissional_prioritaria",
-            "mensagem": high[0]["mensagem"],
-            "acao_prioritaria": "Revisar contexto e condição do atleta antes de intensificar a próxima carga.",
-        }
-    if readiness["sinais"]:
-        return {
-            "estado": "atencao_contextual",
-            "mensagem": "Existem sinais que merecem acompanhamento conjunto entre atleta e equipe.",
-            "acao_prioritaria": "Cruzar prontidão, carga recente e contexto antes da próxima decisão de treino.",
-        }
-    if coverage["classificacao_confianca"] == "baixa":
-        return {
-            "estado": "sem_sinal_forte_baixa_confianca",
-            "mensagem": "Não há sinal forte no registro atual, mas a cobertura ainda é insuficiente para uma conclusão robusta.",
-            "acao_prioritaria": "Aumentar regularidade de prontidão e registro de sessões.",
+            "mensagem": "A referência pessoal começou a ser formada, mas ainda não há base suficiente para tendência.",
+            "acao_prioritaria": "Manter coletas consistentes e relacioná-las aos treinos executados.",
         }
     return {
-        "estado": "acompanhamento_regular",
-        "mensagem": "A evidência disponível não mostra sinal operacional crítico neste momento.",
-        "acao_prioritaria": "Manter monitoramento e relacionar prontidão, carga e evolução esportiva.",
+        "estado": "evidencia_contextual_disponivel",
+        "mensagem": "Há histórico autodeclarado suficiente para comparação nominal com a própria linha de base, sem diagnóstico ou julgamento automático.",
+        "acao_prioritaria": "Cruzar prontidão, treino executado, avaliações e contexto antes de qualquer decisão profissional.",
     }
 
 
@@ -207,17 +184,21 @@ def intelligence_v4(participante_id: UUID, authorization: str | None = Header(de
         "select": "id,participante_id,atleta_id,projeto_id,instrumento_id,data_hora_coleta,status,completude,confiabilidade,dados,origem,created_at",
         "order": "data_hora_coleta.asc", "limit": "100"
     }))
-    sessions: list[dict[str, Any]] = []
+    sessions = _rows(_request("GET", "/rest/v1/agp_sessoes_esportivas", params={
+        "participante_id": f"eq.{participante_id}",
+        "select": "id,status,tipo_sessao,objetivo,inicio_planejado,inicio_real,fim_real,contexto_esportivo,created_at",
+        "order": "inicio_planejado.desc",
+        "limit": "30",
+    }))
     results: list[dict[str, Any]] = []
-    interventions: list[dict[str, Any]] = []
+    interventions = _rows(_request("GET", "/rest/v1/agp_intervencoes_canonicas", params={
+        "participante_id": f"eq.{participante_id}",
+        "select": "*",
+        "order": "created_at.desc",
+        "limit": "10",
+    }))
     if athlete_id:
-        sessions = _rows(_request("GET", "/rest/v1/agp_sessoes_treinamento", params={
-            "atleta_id": f"eq.{athlete_id}", "select": "*", "order": "data_hora_inicio.desc", "limit": "30"
-        }))
         results = _rows(_request("GET", "/rest/v1/agp_resultados_analiticos", params={
-            "atleta_id": f"eq.{athlete_id}", "select": "*", "order": "created_at.desc", "limit": "10"
-        }))
-        interventions = _rows(_request("GET", "/rest/v1/agp_intervencoes", params={
             "atleta_id": f"eq.{athlete_id}", "select": "*", "order": "created_at.desc", "limit": "10"
         }))
 
