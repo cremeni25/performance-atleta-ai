@@ -61,6 +61,18 @@ class GroupMembersUpdate(BaseModel):
     participante_ids: list[UUID]
 
 
+class TrainingSetInput(BaseModel):
+    nome: str | None = Field(default=None, max_length=200)
+    repeticoes: int = Field(default=1, ge=1, le=200)
+    distancia_m: float = Field(gt=0, le=10000)
+    estilo: str | None = Field(default=None, max_length=80)
+    saida_segundos: float | None = Field(default=None, gt=0, le=3600)
+    ritmo_alvo: str | None = Field(default=None, max_length=200)
+    equipamento: list[str] = Field(default_factory=list)
+    objetivo: str | None = Field(default=None, max_length=1000)
+    observacao: str | None = Field(default=None, max_length=1000)
+
+
 class AthleteAdjustment(BaseModel):
     participante_id: UUID
     observacao: str | None = Field(default=None, max_length=2000)
@@ -80,6 +92,7 @@ class TrainingPlanCreate(BaseModel):
     volume_planejado: float | None = Field(default=None, ge=0)
     intensidade_planejada: float | None = Field(default=None, ge=0, le=10)
     conteudo: str = Field(min_length=2, max_length=12000)
+    series: list[TrainingSetInput] = Field(default_factory=list)
     ciclo_id: UUID | None = None
     ajustes_individuais: list[AthleteAdjustment] = Field(default_factory=list)
 
@@ -276,6 +289,7 @@ def create_training_plan(projeto_id: UUID, payload: TrainingPlanCreate, authoriz
             "volume_planejado": payload.volume_planejado,
             "intensidade_planejada": payload.intensidade_planejada,
             "conteudo": payload.conteudo,
+            "series": [item.dict() for item in payload.series],
             "ciclo_id": str(payload.ciclo_id) if payload.ciclo_id else None,
         },
         "criado_por_pessoa_id": actor["pessoa_id"],
@@ -320,6 +334,28 @@ def create_training_plan(projeto_id: UUID, payload: TrainingPlanCreate, authoriz
         }))
         if not session:
             raise HTTPException(status_code=502, detail="Falha ao materializar sessão individual do plano")
+
+        for order, training_set in enumerate(payload.series):
+            _request("POST", "/rest/v1/agp_unidades_sessao", payload={
+                "sessao_id": session["id"],
+                "parent_id": None,
+                "nivel": "set",
+                "ordem": order,
+                "nome": training_set.nome,
+                "objetivo": training_set.objetivo,
+                "planejado": {
+                    "repeticoes": training_set.repeticoes,
+                    "distancia_m": training_set.distancia_m,
+                    "estilo": training_set.estilo,
+                    "saida_segundos": training_set.saida_segundos,
+                    "ritmo_alvo": training_set.ritmo_alvo,
+                    "equipamento": training_set.equipamento,
+                    "observacao": training_set.observacao,
+                    "volume_total_m": training_set.repeticoes * training_set.distancia_m,
+                },
+                "executado": {},
+                "status": "planejada",
+            })
 
         _request("POST", "/rest/v1/agp_plano_treino_atletas", payload={
             "plano_id": plan["id"],
