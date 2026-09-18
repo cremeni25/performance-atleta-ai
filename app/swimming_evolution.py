@@ -109,6 +109,13 @@ def swimming_evolution(
         "limit": "500",
     }))
 
+    window_start = datetime(start_y, start_m, 1, tzinfo=timezone.utc)
+    sessions_window = [
+        item for item in sessions
+        if (_parse_dt(item.get("inicio_real") or item.get("inicio_planejado") or item.get("created_at"))
+            or datetime.min.replace(tzinfo=timezone.utc)) >= window_start
+    ]
+
     readiness = _rows(_request("GET", "/rest/v1/agp_coletas_canonicas", params={
         "participante_id": f"eq.{participante_id}",
         "instrumento_codigo": "eq.AGP-READINESS-DAILY-Q",
@@ -153,7 +160,7 @@ def swimming_evolution(
     total_planned = 0.0
     total_executed = 0.0
     completed = 0
-    for session in sessions:
+    for session in sessions_window:
         dt = _parse_dt(session.get("inicio_real") or session.get("inicio_planejado") or session.get("created_at"))
         if not dt:
             continue
@@ -223,7 +230,7 @@ def swimming_evolution(
             "regra": "nao_exibir_percentual_ilustrativo_sem_metrica_tecnica_comparavel",
         }
 
-    recent_sessions = list(reversed(sessions))[:10]
+    recent_sessions = list(reversed(sessions_window))[:10]
     latest_readiness = list(reversed(readiness_values))[:14]
 
     return {
@@ -243,7 +250,7 @@ def swimming_evolution(
         "resumo": {
             "volume_planejado_m": round(total_planned, 2),
             "volume_executado_m": round(total_executed, 2),
-            "sessoes_total": len(sessions),
+            "sessoes_total": len(sessions_window),
             "sessoes_concluidas": completed,
             "prontidao_registros": len(readiness),
             "provas_total": len(participations),
