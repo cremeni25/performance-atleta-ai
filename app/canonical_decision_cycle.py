@@ -176,10 +176,57 @@ def get_cycle(participante_id: UUID, authorization: str | None = Header(default=
     cycles = _rows(_request("GET", "/rest/v1/agp_ciclo_decisao_canonico", params={
         "participante_id": f"eq.{participante_id}", "select": "*", "order": "decisao_em.desc"
     }))
+
+    enriched: list[dict[str, Any]] = []
+    for cycle in cycles:
+        decision_id = cycle.get("decisao_id")
+        links = _rows(_request("GET", "/rest/v1/agp_decisao_intervencoes", params={
+            "decisao_id": f"eq.{decision_id}",
+            "select": "intervencao_id,created_at",
+            "order": "created_at.desc",
+            "limit": "1",
+        })) if decision_id else []
+        intervention_id = links[0].get("intervencao_id") if links else None
+
+        responses = _rows(_request("GET", "/rest/v1/agp_respostas_intervencao", params={
+            "intervencao_id": f"eq.{intervention_id}",
+            "select": "id,data_avaliacao,classificacao_profissional,estado_comparabilidade",
+            "order": "data_avaliacao.desc",
+            "limit": "1",
+        })) if intervention_id else []
+        response_id = responses[0].get("id") if responses else None
+
+        learnings = _rows(_request("GET", "/rest/v1/agp_aprendizados_longitudinais", params={
+            "decisao_id": f"eq.{decision_id}",
+            "select": "id,tipo,status,created_at",
+            "order": "created_at.desc",
+            "limit": "1",
+        })) if decision_id else []
+        learning_id = learnings[0].get("id") if learnings else None
+
+        if not intervention_id:
+            next_step = "intervencao"
+        elif not response_id:
+            next_step = "resposta"
+        elif not learning_id:
+            next_step = "aprendizado"
+        else:
+            next_step = "ciclo_fechado"
+
+        enriched.append({
+            **cycle,
+            "continuidade": {
+                "intervencao_id": intervention_id,
+                "resposta_id": response_id,
+                "aprendizado_id": learning_id,
+                "proxima_etapa": next_step,
+            },
+        })
+
     return {
-        "modelo": "AGP-Decision-Intervention-Response-Learning-v2",
+        "modelo": "AGP-Decision-Intervention-Response-Learning-v3",
         "participante_id": str(participante_id),
-        "ciclos": cycles,
+        "ciclos": enriched,
         "legado_score_global_necessario": False,
         "principio": "conteudo_humano_essencial_contexto_derivado_pelo_agp",
     }
