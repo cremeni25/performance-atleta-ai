@@ -104,7 +104,6 @@ def swimming_evolution(
 
     sessions = _rows(_request("GET", "/rest/v1/agp_sessoes_esportivas", params={
         "participante_id": f"eq.{participante_id}",
-        "or": f"(inicio_planejado.gte.{start_iso},inicio_real.gte.{start_iso})",
         "select": "id,status,tipo_sessao,objetivo,inicio_planejado,inicio_real,fim_real,contexto_esportivo,created_at",
         "order": "inicio_planejado.asc",
         "limit": "500",
@@ -119,12 +118,17 @@ def swimming_evolution(
         "limit": "500",
     }))
 
-    participations = _rows(_request("GET", "/rest/v1/agp_participacoes_prova", params={
+    participations_all = _rows(_request("GET", "/rest/v1/agp_participacoes_prova", params={
         "participante_id": f"eq.{participante_id}",
         "select": "id,status,tempo_oficial_ms,created_at,updated_at",
         "order": "created_at.asc",
         "limit": "200",
     }))
+    participations = [
+        item for item in participations_all
+        if (_parse_dt(item.get("updated_at") or item.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc))
+        >= datetime(start_y, start_m, 1, tzinfo=timezone.utc)
+    ]
 
     series = _rows(_request("GET", "/rest/v1/agp_series_longitudinais_metricas", params={
         "pessoa_id": f"eq.{pessoa_id}",
