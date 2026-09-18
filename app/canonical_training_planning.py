@@ -97,6 +97,10 @@ class TrainingPlanCreate(BaseModel):
     ajustes_individuais: list[AthleteAdjustment] = Field(default_factory=list)
 
 
+class TrainingWorkspaceDraft(BaseModel):
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class SessionExecutionUpdate(BaseModel):
     status: Literal["em_execucao", "concluida", "cancelada"]
     inicio_real: datetime | None = None
@@ -105,6 +109,89 @@ class SessionExecutionUpdate(BaseModel):
     intensidade_percebida: float | None = Field(default=None, ge=0, le=10)
     conteudo_executado: str | None = Field(default=None, max_length=12000)
     intercorrencias: str | None = Field(default=None, max_length=3000)
+
+
+@router.get("/projetos/{projeto_id}/rascunho-treino")
+def get_training_workspace_draft(
+    projeto_id: UUID,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    user = _authenticated_user(authorization)
+    actor = _actor_person(str(user["id"]))
+    scope = _project_scope(str(actor["pessoa_id"]), str(projeto_id), {"training.plan", "training.record"})
+    row = _first(_request("GET", "/rest/v1/agp_rascunhos_treino", params={
+        "projeto_id": f"eq.{projeto_id}",
+        "pessoa_id": f"eq.{actor['pessoa_id']}",
+        "select": "id,projeto_id,pessoa_id,payload,versao,created_at,updated_at",
+        "limit": "1",
+    }))
+    return {
+        "rascunho": row,
+        "projeto_id": str(projeto_id),
+        "pessoa_id": str(actor["pessoa_id"]),
+        "escopo_profissional": scope,
+    }
+
+
+@router.put("/projetos/{projeto_id}/rascunho-treino")
+def save_training_workspace_draft(
+    projeto_id: UUID,
+    draft: TrainingWorkspaceDraft,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    user = _authenticated_user(authorization)
+    actor = _actor_person(str(user["id"]))
+    scope = _project_scope(str(actor["pessoa_id"]), str(projeto_id), {"training.plan", "training.record"})
+    existing = _first(_request("GET", "/rest/v1/agp_rascunhos_treino", params={
+        "projeto_id": f"eq.{projeto_id}",
+        "pessoa_id": f"eq.{actor['pessoa_id']}",
+        "select": "id,versao",
+        "limit": "1",
+    }))
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        saved = _first(_request("PATCH", "/rest/v1/agp_rascunhos_treino", params={
+            "id": f"eq.{existing['id']}"
+        }, payload={
+            "payload": draft.payload,
+            "versao": int(existing.get("versao") or 1) + 1,
+            "updated_at": now,
+        }))
+    else:
+        saved = _first(_request("POST", "/rest/v1/agp_rascunhos_treino", payload={
+            "projeto_id": str(projeto_id),
+            "pessoa_id": str(actor["pessoa_id"]),
+            "payload": draft.payload,
+            "versao": 1,
+            "updated_at": now,
+        }))
+    if not saved:
+        raise HTTPException(status_code=502, detail="Falha ao persistir rascunho do treino")
+    return {
+        "rascunho": saved,
+        "status": "persistido",
+        "escopo_profissional": scope,
+    }
+
+
+@router.delete("/projetos/{projeto_id}/rascunho-treino")
+def delete_training_workspace_draft(
+    projeto_id: UUID,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    user = _authenticated_user(authorization)
+    actor = _actor_person(str(user["id"]))
+    scope = _project_scope(str(actor["pessoa_id"]), str(projeto_id), {"training.plan", "training.record"})
+    _request("DELETE", "/rest/v1/agp_rascunhos_treino", params={
+        "projeto_id": f"eq.{projeto_id}",
+        "pessoa_id": f"eq.{actor['pessoa_id']}",
+    })
+    return {
+        "status": "limpo",
+        "projeto_id": str(projeto_id),
+        "pessoa_id": str(actor["pessoa_id"]),
+        "escopo_profissional": scope,
+    }
 
 
 @router.get("/projetos/{projeto_id}/planejamento-treinos")
