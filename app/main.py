@@ -45,6 +45,7 @@ from app.canonical_professional_assessment import router as canonical_profession
 from app.canonical_professional_validation import router as canonical_professional_validation_router
 from app.canonical_baseline import router as canonical_baseline_router
 from app.canonical_analytic_engine import router as canonical_analytic_engine_router
+from app.swimming_evolution import router as swimming_evolution_router
 
 app = FastAPI()
 app.include_router(owner_activation_router)
@@ -78,6 +79,7 @@ app.include_router(canonical_professional_assessment_router)
 app.include_router(canonical_professional_validation_router)
 app.include_router(canonical_baseline_router)
 app.include_router(canonical_analytic_engine_router)
+app.include_router(swimming_evolution_router)
 
 _default_cors_origins = [
     "https://agp-frontend-vite.onrender.com",
