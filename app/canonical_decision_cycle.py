@@ -144,7 +144,7 @@ class LearningCreate(BaseModel):
 
 
 def _comparability_snapshot(pessoa_id: str, domain: str) -> dict[str, Any]:
-    series = _rows(_request("GET", "/rest/v1/agp_series_longitudinais_metricas", params={
+    series = _rows(_request("GET", "/rest/v1/agp_series_longitudinais_metricas_v2", params={
         "pessoa_id": f"eq.{pessoa_id}",
         "dominio": f"eq.{domain}",
         "select": "metrica_codigo,estado_comparabilidade,amostras,completude_media,confiabilidade_media",
