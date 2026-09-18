@@ -37,6 +37,7 @@ from app.canonical_institutional_intelligence import router as canonical_institu
 from app.integrative_ai_context import router as integrative_ai_context_router
 from app.canonical_decision_cycle import router as canonical_decision_cycle_router
 from app.canonical_training_competition import router as canonical_training_competition_router
+from app.canonical_training_planning import router as canonical_training_planning_router
 from app.canonical_self_report import router as canonical_self_report_router
 from app.canonical_professional_assessment import router as canonical_professional_assessment_router
 from app.canonical_professional_validation import router as canonical_professional_validation_router
@@ -67,6 +68,7 @@ app.include_router(canonical_institutional_intelligence_router)
 app.include_router(integrative_ai_context_router)
 app.include_router(canonical_decision_cycle_router)
 app.include_router(canonical_training_competition_router)
+app.include_router(canonical_training_planning_router)
 app.include_router(canonical_self_report_router)
 app.include_router(canonical_professional_assessment_router)
 app.include_router(canonical_professional_validation_router)
