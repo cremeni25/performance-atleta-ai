@@ -52,7 +52,7 @@ def integrative_ai_context(
     series = _rows(
         _request(
             "GET",
-            "/rest/v1/agp_series_longitudinais_metricas",
+            "/rest/v1/agp_series_longitudinais_metricas_v2",
             params={
                 "pessoa_id": f"eq.{pessoa_id}",
                 "select": "metrica_id,metrica_codigo,nome_canonico,dominio,amostras,primeira_medicao_em,ultima_medicao_em,completude_media,confiabilidade_media,primeiro_valor,ultimo_valor,unidade_atual,estado_comparabilidade,delta_absoluto,delta_percentual",
