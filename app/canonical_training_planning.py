@@ -131,6 +131,12 @@ def get_training_planning(projeto_id: UUID, authorization: str | None = Header(d
         "plano_id": f"in.({','.join(plan_ids)})",
         "select": "*",
     })) if plan_ids else []
+    session_ids = [str(item["sessao_id"]) for item in recipients if item.get("sessao_id")]
+    sessions = _rows(_request("GET", "/rest/v1/agp_sessoes_esportivas", params={
+        "id": f"in.({','.join(session_ids)})",
+        "select": "id,participante_id,tipo_sessao,status,objetivo,inicio_planejado,fim_planejado,inicio_real,fim_real,contexto_esportivo",
+        "order": "inicio_planejado.desc",
+    })) if session_ids else []
 
     return {
         "modelo": "AGP-Swimming-Training-Planning-v1",
@@ -141,6 +147,7 @@ def get_training_planning(projeto_id: UUID, authorization: str | None = Header(d
         "atletas": athletes,
         "planos": plans,
         "destinos_planos": recipients,
+        "sessoes_materializadas": sessions,
         "principio": "prescricao_coletiva_com_individualizacao_sem_perder_o_atleta_como_centro_longitudinal",
     }
 
